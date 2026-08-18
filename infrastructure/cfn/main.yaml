@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'CloudDrop - Full Stack with Cognito Auth and Multi-File ZIP Support'
+Description: 'CloudDrop - Full Stack with Cognito Auth, Multi-File ZIP Support, and Email'
 
 Parameters:
   Environment:
@@ -106,6 +106,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
       Policies:
         - PolicyName: CloudDropLambdaPolicy
           PolicyDocument:
@@ -129,6 +130,11 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource: !GetAtt MetadataTable.Arn
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: '*'
 
   # ========== Lambda Functions ==========
   CreateTransferFunction:
@@ -522,10 +528,9 @@ Resources:
           const { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
           const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
           const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-          const { PassThrough } = require('stream');
+          const archiver = require('archiver');
           exports.handler = async (event) => {
             try {
-              const archiver = (await import('archiver')).default;
               const s3 = new S3Client({});
               const ddbDoc = DynamoDBDocumentClient.from(new DynamoDBClient({}));
               const BUCKET = process.env.UPLOADS_BUCKET;
@@ -537,24 +542,24 @@ Resources:
               if (objects.length === 0) {
                 return { statusCode: 400, body: JSON.stringify({ error: 'No files found' }) };
               }
-              const zipStream = new PassThrough();
               const archive = archiver('zip', { zlib: { level: 9 } });
-              archive.pipe(zipStream);
-              let totalSize = 0;
+              const chunks = [];
+              archive.on('data', (chunk) => chunks.push(chunk));
+              archive.on('error', (err) => { throw err; });
               for (const obj of objects) {
                 const key = obj.Key;
                 const fileName = key.replace(prefix, '');
-                const getCmd = new GetObjectCommand({ Bucket: BUCKET, Key: key });
-                const response = await s3.send(getCmd);
+                const response = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
                 archive.append(response.Body, { name: fileName });
-                totalSize += obj.Size || 0;
               }
               await archive.finalize();
+              const zipBuffer = Buffer.concat(chunks);
+              const totalSize = zipBuffer.length;
               const zipKey = `zips/${transferId}.zip`;
               await s3.send(new PutObjectCommand({
                 Bucket: BUCKET,
                 Key: zipKey,
-                Body: zipStream,
+                Body: zipBuffer,
                 ContentType: 'application/zip'
               }));
               await ddbDoc.send(new UpdateCommand({
@@ -588,8 +593,52 @@ Resources:
           UPLOADS_BUCKET: !Ref UploadsBucket
       Timeout: 300
       MemorySize: 512
-      Layers:
-        - !Ref ArchiverLayerArn
+
+  # ========== EMAIL FUNCTION (SES) ==========
+  SendEmailFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
+          const ses = new SESClient({});
+          exports.handler = async (event) => {
+            try {
+              const body = JSON.parse(event.body);
+              const { to, link, fileName } = body;
+              const params = {
+                Source: 'ibad84671@gmail.com',
+                Destination: { ToAddresses: [to] },
+                Message: {
+                  Subject: { Data: `📎 ${fileName} shared via CloudDrop` },
+                  Body: {
+                    Text: { Data: `Download your file: ${link}` },
+                    Html: { Data: `<p>Your file <strong>${fileName}</strong> is ready to download.</p><p><a href="${link}">Download Now</a></p><p>This link expires in 7 days.</p>` }
+                  }
+                }
+              };
+              await ses.send(new SendEmailCommand(params));
+              return {
+                statusCode: 200,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ message: 'Email sent successfully' })
+              };
+            } catch (error) {
+              console.error(error);
+              return {
+                statusCode: 500,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: error.message })
+              };
+            }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetadataTable
+      Timeout: 30
 
   # ========== Cognito ==========
   CognitoUserPool:
@@ -696,6 +745,13 @@ Resources:
       ParentId: !Ref BatchIdResource
       PathPart: complete
 
+  SendEmailResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: send-email
+
   # ========== API Methods ==========
   TransferPostMethod:
     Type: AWS::ApiGateway::Method
@@ -783,6 +839,18 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BatchCompleteFunction.Arn}/invocations'
 
+  SendEmailPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref SendEmailResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendEmailFunction.Arn}/invocations'
+
   # ========== Lambda Permissions ==========
   InvokeCreateTransferPermission:
     Type: AWS::Lambda::Permission
@@ -840,6 +908,14 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/batch/{id}/complete'
 
+  InvokeSendEmailPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SendEmailFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/send-email'
+
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -850,6 +926,7 @@ Resources:
       - TransferDeleteMethod
       - BatchPostMethod
       - BatchCompletePostMethod
+      - SendEmailPostMethod
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: prod

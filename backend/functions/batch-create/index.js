@@ -13,9 +13,7 @@ exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
     const files = body.files || [];
-    if (!files.length) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'No files provided' }) };
-    }
+    if (!files.length) return { statusCode: 400, body: JSON.stringify({ error: 'No files' }) };
 
     const transferId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -32,9 +30,7 @@ exports.handler = async (event) => {
     await ddbDoc.send(new PutCommand({
       TableName: TABLE,
       Item: {
-        transferId,
-        ownerId,
-        status: 'pending',
+        transferId, ownerId, status: 'pending',
         createdAt: new Date().toISOString(),
         expiresAt: expiresAt.toISOString(),
         ttl,
@@ -48,7 +44,7 @@ exports.handler = async (event) => {
       const command = new PutObjectCommand({
         Bucket: BUCKET,
         Key: item.objectKey,
-        ContentType: item.contentType,
+        ContentType: item.contentType
       });
       const url = await getSignedUrl(s3, command, { expiresIn: 900 });
       return { fileName: item.fileName, uploadUrl: url };
@@ -56,14 +52,22 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': '*' },
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST,OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+      },
       body: JSON.stringify({ transferId, uploads: presignedUrls })
     };
   } catch (error) {
     console.error(error);
     return {
       statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST,OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+      },
       body: JSON.stringify({ error: error.message })
     };
   }

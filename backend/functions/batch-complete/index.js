@@ -13,21 +13,17 @@ exports.handler = async (event) => {
     const transferId = event.pathParameters.id;
     const prefix = `uploads/${transferId}/`;
 
-    // List all files
     const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
     const objects = listed.Contents || [];
     if (objects.length === 0) {
       return { statusCode: 400, body: JSON.stringify({ error: 'No files found' }) };
     }
 
-    // Create zip in memory using archiver
     const archive = archiver('zip', { zlib: { level: 9 } });
     const chunks = [];
-
     archive.on('data', (chunk) => chunks.push(chunk));
     archive.on('error', (err) => { throw err; });
 
-    // Add each file to the archive
     for (const obj of objects) {
       const key = obj.Key;
       const fileName = key.replace(prefix, '');
@@ -35,14 +31,10 @@ exports.handler = async (event) => {
       archive.append(response.Body, { name: fileName });
     }
 
-    // Finalize the archive
     await archive.finalize();
-
-    // Combine chunks into a single Buffer
     const zipBuffer = Buffer.concat(chunks);
     const totalSize = zipBuffer.length;
 
-    // Upload the zip to S3
     const zipKey = `zips/${transferId}.zip`;
     await s3.send(new PutObjectCommand({
       Bucket: BUCKET,
@@ -51,7 +43,6 @@ exports.handler = async (event) => {
       ContentType: 'application/zip'
     }));
 
-    // Update DynamoDB
     await ddbDoc.send(new UpdateCommand({
       TableName: TABLE,
       Key: { transferId },
@@ -66,14 +57,22 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': '*' },
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST,OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+      },
       body: JSON.stringify({ message: 'Zip created successfully' })
     };
   } catch (error) {
-    console.error('Error:', error);
+    console.error(error);
     return {
       statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST,OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+      },
       body: JSON.stringify({ error: error.message })
     };
   }
