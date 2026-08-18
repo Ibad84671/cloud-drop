@@ -6,20 +6,18 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 const s3Client = new S3Client({});
+
 const TABLE_NAME = process.env.TABLE_NAME;
 const BUCKET = process.env.UPLOADS_BUCKET;
 
 exports.handler = async (event) => {
   try {
     const transferId = event.pathParameters.id;
-
-    // DynamoDB se metadata lo
     const result = await docClient.send(new GetCommand({
       TableName: TABLE_NAME,
       Key: { transferId }
     }));
     const item = result.Item;
-
     if (!item) {
       return { statusCode: 404, body: JSON.stringify({ error: 'Transfer not found' }) };
     }
@@ -30,15 +28,31 @@ exports.handler = async (event) => {
       return { statusCode: 410, body: JSON.stringify({ error: 'Transfer expired' }) };
     }
 
-    // Presigned download URL generate karo
-    const command = new GetObjectCommand({
-      Bucket: BUCKET,
-      Key: item.objectKey,
-      ResponseContentDisposition: `attachment; filename="${item.originalFileName}"`
-    });
-    const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 }); // 5 min
+    let downloadUrl;
+    let fileCount = 1;
+    let totalSize = item.totalSize || 0;
+    let zipFileName = 'archive.zip';
 
-    // Download count increment (fire and forget)
+    if (item.isBatch && item.zipKey) {
+      const command = new GetObjectCommand({
+        Bucket: BUCKET,
+        Key: item.zipKey,
+        ResponseContentDisposition: `attachment; filename="${item.zipKey.split('/').pop()}"`
+      });
+      downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+      fileCount = (item.files || []).length;
+      zipFileName = item.zipKey.split('/').pop();
+    } else {
+      const command = new GetObjectCommand({
+        Bucket: BUCKET,
+        Key: item.objectKey,
+        ResponseContentDisposition: `attachment; filename="${item.originalFileName}"`
+      });
+      downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+      totalSize = item.fileSize || 0;
+      zipFileName = item.originalFileName;
+    }
+
     docClient.send(new UpdateCommand({
       TableName: TABLE_NAME,
       Key: { transferId },
@@ -51,8 +65,11 @@ exports.handler = async (event) => {
       headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({
         downloadUrl,
-        fileName: item.originalFileName,
-        fileSize: item.fileSize
+        fileName: zipFileName,
+        fileSize: totalSize,
+        fileCount: fileCount,
+        totalSize: totalSize,
+        zipFileName: zipFileName
       })
     };
   } catch (error) {

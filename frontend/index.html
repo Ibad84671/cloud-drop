@@ -1,36 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CloudDrop — Fast, Simple, Secure</title>
   <link rel="stylesheet" href="/css/style.css" />
-  <link rel="icon" href="/assets/favicon.ico" />
 </head>
 <body>
   <header>
-    <div class="logo">☁️ CloudDrop</div>
+    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
     <nav>
-      <span id="user-status" style="margin-right:1rem;font-weight:500;"></span>
-      <!-- ✅ Direct Cognito login button -->
-      <button id="auth-btn" onclick="window.location.href='https://clouddrop-502263855269-dev.auth.us-east-1.amazoncognito.com/login?client_id=5rp8tss9iu3s1jb4p5qdljog2e&response_type=token&redirect_uri='+encodeURIComponent(window.location.origin+'/dashboard.html')">
-        Sign In
-      </button>
-      <button id="logout-btn" style="display:none;" onclick="logout()">Logout</button>
+      <span id="user-status">👤 Guest</span>
+      <button id="auth-btn" onclick="window.location.href='/login.html'">Log In</button>
+      <button onclick="window.location.href='/signup.html'" class="btn-primary">Sign Up</button>
+      <div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div>
     </nav>
   </header>
-
-  <main>
+  <main class="container">
     <section class="hero">
       <h1>Fast, Simple, Secure File Sharing.</h1>
-      <p>Drop your files below — no account required.</p>
+      <p>Drop multiple files — they will be shared as a single ZIP.</p>
     </section>
-
     <section class="upload-zone" id="drop-zone">
       <div class="upload-content" id="upload-content">
         <div class="upload-icon">📁</div>
         <p><strong>Drop files here</strong> or click to select</p>
-        <small>Maximum file size: 2GB</small>
+        <small>Maximum total size: 2GB</small>
         <input type="file" id="file-input" multiple style="display:none;" />
       </div>
       <div id="upload-progress" style="display:none;">
@@ -39,84 +34,63 @@
       </div>
       <div id="upload-result" style="display:none;">
         <p>✅ Transfer created!</p>
-        <input type="text" id="share-link" readonly style="width:80%;padding:0.5rem;border:1px solid #ddd;border-radius:8px;font-size:0.9rem;" />
+        <input type="text" id="share-link" readonly style="width:80%;padding:0.5rem;border-radius:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text);" />
         <br><br>
-        <button id="copy-btn" type="button" style="background:#4cc9f0;padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:white;">📋 Copy Link</button>
-        <input type="email" id="recipient-email" placeholder="Recipient email (optional)" style="padding:0.5rem;border:1px solid #ddd;border-radius:8px;width:60%;margin:0.5rem 0;" />
-        <button id="email-btn" type="button" style="background:#4cc9f0;padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:white;">✉️ Send via Email</button>
+        <button id="copy-btn" type="button" style="background:var(--accent);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">📋 Copy Link</button>
+        <input type="email" id="recipient-email" placeholder="Recipient email (optional)" style="padding:0.5rem;border-radius:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text);width:60%;margin:0.5rem 0;" />
+        <button id="email-btn" style="background:var(--accent-light);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">✉️ Send</button>
         <br><br>
-        <button id="new-upload-btn" type="button" style="background:#e94560;padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:white;">➕ New Upload</button>
+        <button id="new-upload-btn" style="background:var(--danger);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">➕ New Upload</button>
       </div>
     </section>
   </main>
-
+  <script src="/js/theme.js"></script>
   <script>
-    // ---- Auth state ----
-    const token = localStorage.getItem('idToken') || localStorage.getItem('accessToken');
+    const API_BASE = 'https://s3on4yv3z8.execute-api.us-east-1.amazonaws.com/prod';
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('idToken');
+    const statusEl = document.getElementById('user-status');
+    const authBtn = document.getElementById('auth-btn');
     if (token) {
-        document.getElementById('user-status').textContent = '✅ Logged in';
-        document.getElementById('auth-btn').style.display = 'none';
-        document.getElementById('logout-btn').style.display = 'inline-block';
+      statusEl.textContent = '✅ Logged in';
+      authBtn.textContent = 'Dashboard';
+      authBtn.onclick = () => window.location.href = '/dashboard.html';
     } else {
-        document.getElementById('user-status').textContent = '👤 Guest';
-    }
-    function logout() {
-        localStorage.clear();
-        window.location.href = '/';
+      statusEl.textContent = '👤 Guest';
+      authBtn.textContent = 'Log In';
+      authBtn.onclick = () => window.location.href = '/login.html';
     }
 
-    // ---- Upload logic ----
-    const API_BASE = 'https://s3on4yv3z8.execute-api.us-east-1.amazonaws.com/prod';
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
 
-    // Copy link function
     async function copyLinkToClipboard(link) {
-      if (!link) {
-        alert('No link to copy!');
-        return;
-      }
+      if (!link) return alert('No link to copy!');
       try {
         await navigator.clipboard.writeText(link);
-        alert('✅ Link copied to clipboard!');
-      } catch (err) {
+        alert('✅ Link copied!');
+      } catch {
         const temp = document.createElement('input');
         temp.value = link;
         document.body.appendChild(temp);
         temp.select();
         document.execCommand('copy');
         document.body.removeChild(temp);
-        alert('✅ Link copied to clipboard!');
+        alert('✅ Link copied!');
       }
     }
 
-    // DOM event listeners
-    document.addEventListener('DOMContentLoaded', function() {
-      const copyBtn = document.getElementById('copy-btn');
-      if (copyBtn) {
-        copyBtn.addEventListener('click', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          const input = document.getElementById('share-link');
-          copyLinkToClipboard(input.value);
-        });
-      }
-      const emailBtn = document.getElementById('email-btn');
-      if (emailBtn) {
-        emailBtn.addEventListener('click', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          alert('Email feature coming soon!');
-        });
-      }
-      const newUploadBtn = document.getElementById('new-upload-btn');
-      if (newUploadBtn) {
-        newUploadBtn.addEventListener('click', function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          resetUpload();
-        });
-      }
+    document.getElementById('copy-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const input = document.getElementById('share-link');
+      copyLinkToClipboard(input.value);
+    });
+    document.getElementById('email-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      alert('✉️ Email sharing coming soon!');
+    });
+    document.getElementById('new-upload-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      resetUpload();
     });
 
     function resetUpload() {
@@ -129,12 +103,9 @@
       if (e.target.closest('button') || e.target.closest('input')) return;
       fileInput.click();
     });
-    dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      dropZone.classList.add('dragover');
-    });
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', (e) => {
+    dropZone.addEventListener('drop', e => {
       e.preventDefault();
       dropZone.classList.remove('dragover');
       handleFiles(e.dataTransfer.files);
@@ -143,39 +114,50 @@
 
     async function handleFiles(files) {
       if (!files.length) return;
-      const file = files[0];
-      if (file.size > 2 * 1024 ** 3) {
-        alert('❌ File exceeds 2GB limit.');
-        return;
-      }
+      const totalSize = Array.from(files).reduce((sum, f) => sum + f.size, 0);
+      if (totalSize > 2 * 1024 ** 3) return alert('Total size exceeds 2GB limit.');
+
+      const fileInfos = Array.from(files).map(f => ({
+        fileName: f.name,
+        fileSize: f.size,
+        contentType: f.type || 'application/octet-stream'
+      }));
+
       document.getElementById('upload-content').style.display = 'none';
       document.getElementById('upload-progress').style.display = 'block';
       updateProgress(0);
 
       try {
-        const res = await fetch(`${API_BASE}/transfer`, {
+        const res = await fetch(`${API_BASE}/batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileName: file.name,
-            fileSize: file.size,
-            contentType: file.type || 'application/octet-stream'
-          })
+          body: JSON.stringify({ files: fileInfos })
         });
         const data = await res.json();
-        updateProgress(30);
-        const uploadRes = await fetch(data.uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type || 'application/octet-stream' }
-        });
-        if (!uploadRes.ok) throw new Error('Upload failed');
-        updateProgress(80);
-        await fetch(`${API_BASE}/transfer/${data.transferId}/complete`, { method: 'POST' });
+        const transferId = data.transferId;
+        const uploads = data.uploads;
+
+        let uploaded = 0;
+        for (const file of files) {
+          const uploadInfo = uploads.find(u => u.fileName === file.name);
+          if (!uploadInfo) continue;
+          const uploadRes = await fetch(uploadInfo.uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type || 'application/octet-stream' }
+          });
+          if (!uploadRes.ok) throw new Error(`Upload failed for ${file.name}`);
+          uploaded++;
+          const progress = Math.round((uploaded / files.length) * 100);
+          updateProgress(progress);
+        }
+
+        await fetch(`${API_BASE}/batch/${transferId}/complete`, { method: 'POST' });
+
         updateProgress(100);
         document.getElementById('upload-progress').style.display = 'none';
         document.getElementById('upload-result').style.display = 'block';
-        const shareLink = `${window.location.origin}/t/${data.transferId}`;
+        const shareLink = `${window.location.origin}/t/${transferId}`;
         document.getElementById('share-link').value = shareLink;
         try { await navigator.clipboard.writeText(shareLink); } catch(e) {}
       } catch (err) {

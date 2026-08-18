@@ -1,11 +1,15 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'CloudDrop - Core Stack (S3, CloudFront, DynamoDB, Lambda, API Gateway, Cognito)'
+Description: 'CloudDrop - Full Stack with Cognito Auth and Multi-File ZIP Support'
 
 Parameters:
   Environment:
     Type: String
     Default: dev
     AllowedValues: [dev, prod]
+  ArchiverLayerArn:
+    Type: String
+    Description: ARN of the Lambda layer containing archiver npm package
+    Default: ''
 
 Resources:
   # ========== S3 Buckets ==========
@@ -31,7 +35,7 @@ Resources:
       VersioningConfiguration:
         Status: Enabled
 
-  # ========== CloudFront (without function association) ==========
+  # ========== CloudFront ==========
   OAI:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
@@ -53,6 +57,10 @@ Resources:
           TargetOriginId: S3Frontend
           ViewerProtocolPolicy: redirect-to-https
           CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6'
+          # ✅ FIXED: FunctionAssociations as an array
+          FunctionAssociations:
+            - FunctionARN: arn:aws:cloudfront::502263855269:function/CloudDrop-Rewrite
+              EventType: viewer-request
         CustomErrorResponses:
           - ErrorCode: 404
             ResponseCode: 200
@@ -109,7 +117,10 @@ Resources:
                   - s3:PutObject
                   - s3:GetObject
                   - s3:DeleteObject
-                Resource: !Sub '${UploadsBucket.Arn}/*'
+                  - s3:ListBucket
+                Resource:
+                  - !Sub '${UploadsBucket.Arn}'
+                  - !Sub '${UploadsBucket.Arn}/*'
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
@@ -264,12 +275,29 @@ Resources:
               if (new Date(item.expiresAt) < new Date()) {
                 return { statusCode: 410, body: JSON.stringify({ error: 'Transfer expired' }) };
               }
-              const command = new GetObjectCommand({
-                Bucket: BUCKET,
-                Key: item.objectKey,
-                ResponseContentDisposition: `attachment; filename="${item.originalFileName}"`
-              });
-              const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+              let downloadUrl;
+              let fileCount = 1;
+              let totalSize = item.totalSize || 0;
+              let zipFileName = 'archive.zip';
+              if (item.isBatch && item.zipKey) {
+                const command = new GetObjectCommand({
+                  Bucket: BUCKET,
+                  Key: item.zipKey,
+                  ResponseContentDisposition: `attachment; filename="${item.zipKey.split('/').pop()}"`
+                });
+                downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+                fileCount = (item.files || []).length;
+                zipFileName = item.zipKey.split('/').pop();
+              } else {
+                const command = new GetObjectCommand({
+                  Bucket: BUCKET,
+                  Key: item.objectKey,
+                  ResponseContentDisposition: `attachment; filename="${item.originalFileName}"`
+                });
+                downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+                totalSize = item.fileSize || 0;
+                zipFileName = item.originalFileName;
+              }
               docClient.send(new UpdateCommand({
                 TableName: TABLE_NAME,
                 Key: { transferId },
@@ -279,7 +307,14 @@ Resources:
               return {
                 statusCode: 200,
                 headers: { 'Access-Control-Allow-Origin': '*' },
-                body: JSON.stringify({ downloadUrl, fileName: item.originalFileName, fileSize: item.fileSize })
+                body: JSON.stringify({
+                  downloadUrl,
+                  fileName: zipFileName,
+                  fileSize: totalSize,
+                  fileCount: fileCount,
+                  totalSize: totalSize,
+                  zipFileName: zipFileName
+                })
               };
             } catch (error) {
               console.error(error);
@@ -376,6 +411,12 @@ Resources:
                   Key: item.objectKey
                 }));
               }
+              if (item.zipKey) {
+                await s3Client.send(new DeleteObjectCommand({
+                  Bucket: BUCKET,
+                  Key: item.zipKey
+                }));
+              }
               return {
                 statusCode: 200,
                 headers: { 'Access-Control-Allow-Origin': '*' },
@@ -394,6 +435,143 @@ Resources:
         Variables:
           TABLE_NAME: !Ref MetadataTable
           UPLOADS_BUCKET: !Ref UploadsBucket
+
+  # ========== BATCH FUNCTIONS ==========
+  BatchCreateFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
+          const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+          const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+          const crypto = require('crypto');
+          const ddbDoc = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+          const s3 = new S3Client({});
+          const TABLE = process.env.TABLE_NAME;
+          const BUCKET = process.env.UPLOADS_BUCKET;
+          exports.handler = async (event) => {
+            try {
+              const body = JSON.parse(event.body);
+              const files = body.files || [];
+              if (!files.length) return { statusCode: 400, body: JSON.stringify({ error: 'No files' }) };
+              const transferId = crypto.randomUUID();
+              const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+              const ttl = Math.floor(expiresAt.getTime() / 1000);
+              const ownerId = event.requestContext?.authorizer?.claims?.sub || 'guest';
+              const fileItems = files.map(f => ({
+                fileName: f.fileName,
+                fileSize: f.fileSize,
+                contentType: f.contentType,
+                objectKey: `uploads/${transferId}/${f.fileName}`
+              }));
+              await ddbDoc.send(new PutCommand({
+                TableName: TABLE,
+                Item: {
+                  transferId,
+                  ownerId,
+                  status: 'pending',
+                  createdAt: new Date().toISOString(),
+                  expiresAt: expiresAt.toISOString(),
+                  ttl,
+                  files: fileItems,
+                  isBatch: true,
+                  downloadCount: 0
+                }
+              }));
+              const presignedUrls = await Promise.all(fileItems.map(async (item) => {
+                const command = new PutObjectCommand({
+                  Bucket: BUCKET,
+                  Key: item.objectKey,
+                  ContentType: item.contentType,
+                });
+                const url = await getSignedUrl(s3, command, { expiresIn: 900 });
+                return { fileName: item.fileName, uploadUrl: url };
+              }));
+              return {
+                statusCode: 200,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ transferId, uploads: presignedUrls })
+              };
+            } catch (error) {
+              console.error(error);
+              return {
+                statusCode: 500,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: error.message })
+              };
+            }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetadataTable
+          UPLOADS_BUCKET: !Ref UploadsBucket
+      Timeout: 30
+
+  BatchCompleteFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+          const archiver = require('archiver');
+          const { PassThrough } = require('stream');
+          const s3 = new S3Client({});
+          const ddbDoc = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+          const BUCKET = process.env.UPLOADS_BUCKET;
+          const TABLE = process.env.TABLE_NAME;
+          exports.handler = async (event) => {
+            try {
+              const transferId = event.pathParameters.id;
+              const prefix = `uploads/${transferId}/`;
+              const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
+              const objects = listed.Contents || [];
+              if (objects.length === 0) return { statusCode: 400, body: JSON.stringify({ error: 'No files found' }) };
+              const zipStream = new PassThrough();
+              const archive = archiver('zip', { zlib: { level: 9 } });
+              archive.pipe(zipStream);
+              let totalSize = 0;
+              for (const obj of objects) {
+                const key = obj.Key;
+                const fileName = key.replace(prefix, '');
+                const getCmd = new GetObjectCommand({ Bucket: BUCKET, Key: key });
+                const response = await s3.send(getCmd);
+                archive.append(response.Body, { name: fileName });
+                totalSize += obj.Size || 0;
+              }
+              await archive.finalize();
+              const zipKey = `zips/${transferId}.zip`;
+              await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: zipKey, Body: zipStream, ContentType: 'application/zip' }));
+              await ddbDoc.send(new UpdateCommand({
+                TableName: TABLE,
+                Key: { transferId },
+                UpdateExpression: 'SET #status = :ready, zipKey = :zipKey, totalSize = :totalSize',
+                ExpressionAttributeNames: { '#status': 'status' },
+                ExpressionAttributeValues: { ':ready': 'ready', ':zipKey': zipKey, ':totalSize': totalSize }
+              }));
+              return { statusCode: 200, headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ message: 'Zip created successfully' }) };
+            } catch (error) {
+              console.error(error);
+              return { statusCode: 500, headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ error: error.message }) };
+            }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetadataTable
+          UPLOADS_BUCKET: !Ref UploadsBucket
+      Timeout: 300
+      MemorySize: 512
+      Layers:
+        - !Ref ArchiverLayerArn
 
   # ========== Cognito ==========
   CognitoUserPool:
@@ -443,6 +621,7 @@ Resources:
       ProviderARNs:
         - !GetAtt CognitoUserPool.Arn
 
+  # ========== API Resources ==========
   TransferResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -478,7 +657,28 @@ Resources:
       ParentId: !Ref UserResource
       PathPart: transfers
 
-  # Public endpoints
+  BatchResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: batch
+
+  BatchIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref BatchResource
+      PathPart: '{id}'
+
+  BatchCompleteResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref BatchIdResource
+      PathPart: complete
+
+  # ========== API Methods ==========
   TransferPostMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -515,7 +715,6 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CompleteUploadFunction.Arn}/invocations'
 
-  # Protected endpoints
   UserTransfersGetMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -542,7 +741,31 @@ Resources:
         Type: AWS_PROXY
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteTransferFunction.Arn}/invocations'
 
-  # Lambda permissions
+  BatchPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref BatchResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BatchCreateFunction.Arn}/invocations'
+
+  BatchCompletePostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref BatchCompleteResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BatchCompleteFunction.Arn}/invocations'
+
+  # ========== Lambda Permissions ==========
   InvokeCreateTransferPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -583,6 +806,22 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/DELETE/transfer/{id}'
 
+  InvokeBatchCreatePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BatchCreateFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/batch'
+
+  InvokeBatchCompletePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BatchCompleteFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/batch/{id}/complete'
+
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -591,6 +830,8 @@ Resources:
       - TransferCompletePostMethod
       - UserTransfersGetMethod
       - TransferDeleteMethod
+      - BatchPostMethod
+      - BatchCompletePostMethod
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: prod

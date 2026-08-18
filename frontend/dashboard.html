@@ -1,126 +1,112 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard - CloudDrop</title>
-    <link rel="stylesheet" href="/css/style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — CloudDrop</title>
+  <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
-    <header>
-        <div class="logo">☁️ CloudDrop</div>
-        <nav>
-            <span id="user-email" style="margin-right:1rem;font-weight:500;"></span>
-            <button id="logout-btn">Logout</button>
-        </nav>
-    </header>
-    <main style="max-width:900px;margin:2rem auto;padding:0 1rem;">
-        <h2 style="margin-bottom:1.5rem;">My Transfers</h2>
-        <div id="transfers-list" style="background:white;padding:1.5rem;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">Loading...</div>
-        <div style="margin-top:1.5rem;">
-            <button onclick="window.location.href='/'">➕ New Upload</button>
-        </div>
-    </main>
-    <script>
-        const API_BASE = 'https://s3on4yv3z8.execute-api.us-east-1.amazonaws.com/prod';
-        const COGNITO_DOMAIN = 'clouddrop-502263855269-dev';
-        const CLIENT_ID = '5rp8tss9iu3s1jb4p5qdljog2e';
-        const REDIRECT_URI = window.location.origin + '/dashboard.html';
+  <header>
+    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
+    <nav>
+      <span id="user-email" style="font-weight:500;color:var(--text-secondary);"></span>
+      <button id="logout-btn" style="background:var(--danger);color:#fff;">Logout</button>
+      <div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div>
+    </nav>
+  </header>
+  <main class="container" style="padding:2rem 1rem;">
+    <h2 style="margin-bottom:1.5rem;">My Transfers</h2>
+    <div id="transfers-list" class="table-wrap glass">Loading...</div>
+    <div style="margin-top:1.5rem;">
+      <button onclick="window.location.href='/'" style="background:var(--accent);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">➕ New Upload</button>
+    </div>
+  </main>
+  <script src="/js/theme.js"></script>
+  <script>
+    const API_BASE = 'https://s3on4yv3z8.execute-api.us-east-1.amazonaws.com/prod';
+    const COGNITO_DOMAIN = 'clouddrop-502263855269-dev';
+    const CLIENT_ID = '5rp8tss9iu3s1jb4p5qdljog2e';
+    const REDIRECT_URI = window.location.origin + '/dashboard.html';
 
-        // Extract ID token from URL hash
-        const hash = window.location.hash.substring(1);
-        const params = new URLSearchParams(hash);
-        const idToken = params.get('id_token');
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const idToken = params.get('id_token');
+    if (idToken) {
+      localStorage.setItem('accessToken', idToken);
+      localStorage.setItem('idToken', idToken);
+      window.location.hash = '';
+    }
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('idToken');
+    if (!token) {
+      window.location.href = `https://${COGNITO_DOMAIN}.auth.us-east-1.amazoncognito.com/login?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+    }
 
-        if (idToken) {
-            localStorage.setItem('idToken', idToken);
-            localStorage.setItem('accessToken', idToken);
-            window.location.hash = '';
-        }
+    function parseJwt(t) {
+      try {
+        const base64Url = t.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        return JSON.parse(jsonPayload);
+      } catch(e) { return {}; }
+    }
+    try {
+      const payload = parseJwt(token);
+      document.getElementById('user-email').textContent = payload.email || 'User';
+    } catch(e) {}
 
-        const token = localStorage.getItem('idToken') || localStorage.getItem('accessToken');
-        if (!token) {
-            window.location.href = `https://${COGNITO_DOMAIN}.auth.us-east-1.amazoncognito.com/login?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
-        }
-
-        function parseJwt(t) {
-            try {
-                const base64Url = t.split('.')[1];
-                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-                return JSON.parse(jsonPayload);
-            } catch(e) { return {}; }
-        }
-
-        try {
-            const payload = parseJwt(token);
-            document.getElementById('user-email').textContent = payload.email || 'User';
-        } catch(e) {}
-
-        async function loadTransfers() {
-            try {
-                const res = await fetch(API_BASE + '/user/transfers', {
-                    headers: { 'Authorization': token }
-                });
-                if (!res.ok) throw new Error('Failed to fetch');
-                const data = await res.json();
-                const container = document.getElementById('transfers-list');
-                if (data.length === 0) {
-                    container.innerHTML = '<p style="color:#888;">No transfers yet. Upload a file to get started!</p>';
-                    return;
-                }
-                let html = `<table style="width:100%;border-collapse:collapse;font-size:0.95rem;">
-                    <thead><tr style="background:#f5f5f5;text-align:left;">
-                        <th style="padding:0.75rem;">File</th>
-                        <th>Size</th>
-                        <th>Status</th>
-                        <th>Expires</th>
-                        <th>Downloads</th>
-                        <th>Action</th>
-                    </tr></thead><tbody>`;
-                data.forEach(item => {
-                    const sizeMB = (item.fileSize / 1024 / 1024).toFixed(2);
-                    const expires = new Date(item.expiresAt).toLocaleDateString();
-                    html += `<tr style="border-bottom:1px solid #eee;">
-                        <td style="padding:0.75rem;">${item.originalFileName}</td>
-                        <td>${sizeMB} MB</td>
-                        <td>${item.status}</td>
-                        <td>${expires}</td>
-                        <td>${item.downloadCount || 0}</td>
-                        <td><button onclick="deleteTransfer('${item.transferId}')" style="background:#e94560;padding:0.3rem 0.8rem;font-size:0.8rem;">Delete</button></td>
-                    </tr>`;
-                });
-                html += '</tbody></table>';
-                container.innerHTML = html;
-            } catch (err) {
-                document.getElementById('transfers-list').innerHTML = '<p style="color:red;">Error loading transfers. Please try again.</p>';
-                console.error('Dashboard error:', err);
-            }
-        }
-
-        async function deleteTransfer(transferId) {
-            if (!confirm('Delete this transfer?')) return;
-            try {
-                const res = await fetch(API_BASE + '/transfer/' + transferId, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': token }
-                });
-                if (res.ok) {
-                    loadTransfers();
-                } else {
-                    alert('Delete failed');
-                }
-            } catch(e) {
-                alert('Error deleting');
-            }
-        }
-
-        document.getElementById('logout-btn').addEventListener('click', () => {
-            localStorage.clear();
-            window.location.href = '/';
+    async function loadTransfers() {
+      try {
+        const res = await fetch(API_BASE + '/user/transfers', {
+          headers: { 'Authorization': 'Bearer ' + token }
         });
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        const container = document.getElementById('transfers-list');
+        if (data.length === 0) {
+          container.innerHTML = '<p style="color:var(--text-secondary);">No transfers yet. Upload a file to get started!</p>';
+          return;
+        }
+        let html = `<table>
+          <thead><tr><th>File</th><th>Size</th><th>Status</th><th>Expires</th><th>Downloads</th><th>Action</th></tr></thead><tbody>`;
+        data.forEach(item => {
+          const sizeMB = (item.fileSize / 1024 / 1024).toFixed(2);
+          const expires = new Date(item.expiresAt).toLocaleDateString();
+          html += `<tr>
+            <td>${item.originalFileName}</td>
+            <td>${sizeMB} MB</td>
+            <td>${item.status}</td>
+            <td>${expires}</td>
+            <td>${item.downloadCount || 0}</td>
+            <td><button onclick="deleteTransfer('${item.transferId}')">Delete</button></td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch (err) {
+        document.getElementById('transfers-list').innerHTML = '<p style="color:var(--danger);">Error loading transfers. Please try again.</p>';
+        console.error(err);
+      }
+    }
 
-        loadTransfers();
-    </script>
+    async function deleteTransfer(transferId) {
+      if (!confirm('Delete this transfer?')) return;
+      try {
+        const res = await fetch(API_BASE + '/transfer/' + transferId, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.ok) loadTransfers();
+        else alert('Delete failed');
+      } catch(e) { alert('Error deleting'); }
+    }
+
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      localStorage.clear();
+      window.location.href = '/';
+    });
+
+    loadTransfers();
+  </script>
 </body>
 </html>

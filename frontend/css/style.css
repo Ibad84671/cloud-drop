@@ -1,109 +1,127 @@
 :root {
-  --primary: #1a1a2e;
-  --secondary: #16213e;
-  --accent: #0f3460;
-  --highlight: #e94560;
-  --bg: #f0f2f5;
-  --card: #ffffff;
-  --radius: 16px;
-  --shadow: 0 20px 60px rgba(0,0,0,0.10);
+  --bg: #f0f4f8;
+  --bg-card: rgba(255, 255, 255, 0.25);
+  --text: #1a1a2e;
+  --text-secondary: #4a4a6a;
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  --accent: #6c5ce7;
+  --accent-light: #a29bfe;
+  --danger: #e94560;
+  --success: #00b894;
+  --input-bg: rgba(255, 255, 255, 0.6);
+  --input-border: rgba(255, 255, 255, 0.3);
+  --radius: 20px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
+[data-theme="dark"] {
+  --bg: #0f0e17;
+  --bg-card: rgba(30, 30, 60, 0.4);
+  --text: #fffffe;
+  --text-secondary: #a7a9be;
+  --glass-border: rgba(255, 255, 255, 0.15);
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  --input-bg: rgba(30, 30, 60, 0.6);
+  --input-border: rgba(255, 255, 255, 0.1);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font);
   background: var(--bg);
-  color: var(--primary);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  color: var(--text);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  transition: background var(--transition), color var(--transition);
 }
-
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem 3rem;
-  background: var(--card);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-}
-
-.logo {
-  font-weight: 800;
-  font-size: 1.6rem;
-  letter-spacing: -0.5px;
-  color: var(--primary);
-}
-.logo span { color: var(--highlight); }
-
-nav button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 0.6rem 1.8rem;
-  border-radius: 40px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: 0.2s;
-}
-nav button:hover { background: var(--highlight); transform: scale(1.02); }
-
-.hero {
-  text-align: center;
-  padding: 3rem 1rem 1rem;
-}
-.hero h1 { font-size: 2.8rem; font-weight: 700; letter-spacing: -1px; }
-.hero p { color: #555; font-size: 1.2rem; margin-top: 0.5rem; }
-
-.upload-zone {
-  max-width: 640px;
-  margin: 2rem auto;
-  padding: 3rem 2rem;
-  background: var(--card);
-  border: 2px dashed #ccc;
-  border-radius: var(--radius);
+.glass {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
   box-shadow: var(--shadow);
-  text-align: center;
-  transition: 0.3s;
-  cursor: pointer;
+  border-radius: var(--radius);
+}
+.container { max-width:1200px; margin:0 auto; padding:0 20px; width:100%; }
+header {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:1.2rem 2rem;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--glass-border);
+  position:sticky; top:0; z-index:100;
+}
+.logo { font-size:1.8rem; font-weight:800; cursor:pointer; transition:transform 0.2s; }
+.logo:hover { transform:scale(1.02); }
+.logo span { color:var(--accent); }
+nav { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+nav button, nav a {
+  background:none; border:none; color:var(--text); font-weight:600;
+  padding:0.5rem 1.2rem; border-radius:40px; cursor:pointer;
+  transition: all var(--transition); text-decoration:none;
+}
+nav button:hover, nav a:hover {
+  background:var(--accent); color:#fff; transform:scale(1.04);
+}
+nav .btn-primary { background:var(--accent); color:#fff; }
+nav .btn-primary:hover { background:var(--accent-light); color:#fff; }
+#user-status { font-weight:500; color:var(--text-secondary); }
+.theme-toggle {
+  background:var(--bg-card); border:1px solid var(--glass-border);
+  border-radius:50%; width:40px; height:40px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:1.2rem; transition:all var(--transition);
+}
+.theme-toggle:hover { background:var(--accent); color:#fff; transform:rotate(30deg); }
+.hero { text-align:center; padding:4rem 1rem 2rem; }
+.hero h1 { font-size:3.2rem; font-weight:800; background:linear-gradient(135deg,var(--accent),var(--accent-light)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.hero p { font-size:1.2rem; color:var(--text-secondary); margin-top:0.5rem; }
+.upload-zone {
+  max-width:700px; margin:2rem auto; padding:3rem 2rem;
+  text-align:center; border:2px dashed var(--glass-border);
+  border-radius:var(--radius); background:var(--bg-card);
+  backdrop-filter:blur(8px); transition:all var(--transition); cursor:pointer;
 }
 .upload-zone:hover, .upload-zone.dragover {
-  border-color: var(--highlight);
-  background: #fff5f7;
+  border-color:var(--accent); background:rgba(108,92,231,0.1); transform:scale(1.01);
 }
-.upload-icon { font-size: 4rem; }
-.upload-zone small { color: #888; display: block; margin-top: 0.5rem; }
-
-#upload-progress { margin-top: 1.5rem; }
-#progress-bar { width: 100%; height: 10px; border-radius: 10px; background: #eee; }
-#progress-bar::-webkit-progress-value { background: var(--highlight); border-radius: 10px; }
-
-#upload-result { margin-top: 1.5rem; }
-#share-link { width: 80%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; }
-
-button {
-  background: var(--highlight);
-  color: white;
-  border: none;
-  padding: 0.6rem 1.8rem;
-  border-radius: 40px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.2s;
+.upload-icon { font-size:4rem; }
+.upload-zone small { color:var(--text-secondary); display:block; margin-top:0.5rem; }
+.auth-container {
+  max-width:440px; margin:4rem auto; padding:2.5rem 2rem;
+  background:var(--bg-card); backdrop-filter:blur(16px);
+  border-radius:var(--radius); border:1px solid var(--glass-border);
+  box-shadow:var(--shadow);
 }
-button:hover { opacity: 0.85; transform: scale(1.02); }
-
-#recipient-email {
-  padding: 0.6rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  width: 60%;
-  margin: 0.5rem 0;
+.auth-container h2 { text-align:center; margin-bottom:1.5rem; }
+.auth-container label { display:block; margin:1rem 0 0.3rem; font-weight:500; }
+.auth-container input {
+  width:100%; padding:0.8rem 1rem;
+  border:1px solid var(--input-border); border-radius:12px;
+  background:var(--input-bg); color:var(--text); font-size:1rem;
+  transition: border var(--transition);
 }
-
-@media (max-width: 640px) {
-  header { flex-direction: column; gap: 0.5rem; padding: 1rem; }
-  .hero h1 { font-size: 2rem; }
-  .upload-zone { margin: 1rem; padding: 2rem 1rem; }
+.auth-container input:focus { outline:none; border-color:var(--accent); }
+.auth-container button {
+  width:100%; padding:0.8rem; margin-top:1.2rem;
+  background:var(--accent); border:none; border-radius:40px;
+  color:#fff; font-weight:700; font-size:1rem; cursor:pointer;
+  transition: all var(--transition);
+}
+.auth-container button:hover { background:var(--accent-light); transform:scale(1.02); }
+.auth-container .secondary-btn { background:transparent; border:1px solid var(--glass-border); color:var(--text); }
+.auth-container .secondary-btn:hover { background:var(--glass-border); }
+.table-wrap { overflow-x:auto; background:var(--bg-card); backdrop-filter:blur(8px); border-radius:var(--radius); padding:1rem; border:1px solid var(--glass-border); }
+table { width:100%; border-collapse:collapse; font-size:0.95rem; }
+th { text-align:left; padding:0.75rem 0.5rem; color:var(--text-secondary); border-bottom:1px solid var(--glass-border); }
+td { padding:0.75rem 0.5rem; border-bottom:1px solid rgba(128,128,128,0.1); }
+tr:last-child td { border-bottom:none; }
+td button { background:var(--danger); border:none; padding:0.3rem 0.8rem; border-radius:30px; color:#fff; font-weight:600; cursor:pointer; transition:all var(--transition); }
+td button:hover { opacity:0.8; transform:scale(1.05); }
+@media (max-width:640px) {
+  header { flex-wrap:wrap; gap:0.5rem; padding:1rem; }
+  .hero h1 { font-size:2.2rem; }
+  .upload-zone { margin:1rem; padding:2rem 1rem; }
+  .auth-container { margin:2rem 1rem; padding:1.5rem; }
 }
