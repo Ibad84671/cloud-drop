@@ -1,0 +1,7 @@
+{
+  "name": "batch-complete",
+  "version": "1.0.0",
+  "dependencies": {
+    "archiver": "^5.3.0"
+  }
+}
