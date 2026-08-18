@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudDrop — Download</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <header>
+    <div class="logo">☁️ CloudDrop</div>
+  </header>
+  <main>
+    <section class="hero">
+      <h1>📥 Download Your File</h1>
+      <p id="file-info">Loading...</p>
+    </section>
+    <section class="upload-zone" style="cursor:default;">
+      <div id="download-content">
+        <div class="upload-icon">📄</div>
+        <p id="file-name">File Name</p>
+        <p id="file-size" style="color:#888;font-size:0.9rem;">Size</p>
+        <button id="download-btn" style="margin-top:1rem;">⬇️ Download</button>
+        <p id="expiry" style="color:#888;font-size:0.8rem;margin-top:1rem;"></p>
+      </div>
+      <div id="error-content" style="display:none;">
+        <div class="upload-icon">❌</div>
+        <p id="error-message" style="color:red;">File not found or expired.</p>
+      </div>
+    </section>
+  </main>
+  <script>
+    // ✅ CORRECT API URL
+    const API_BASE = 'https://s3on4yv3z8.execute-api.us-east-1.amazonaws.com/prod';
+    const transferId = window.location.pathname.split('/').pop();
+
+    async function loadTransfer() {
+      try {
+        const res = await fetch(`${API_BASE}/transfer/${transferId}`);
+        if (!res.ok) {
+          if (res.status === 404) throw new Error('Transfer not found');
+          if (res.status === 410) throw new Error('This transfer has expired');
+          throw new Error('Failed to load');
+        }
+        const data = await res.json();
+        document.getElementById('file-info').textContent = 'Ready to download';
+        document.getElementById('file-name').textContent = data.fileName || 'File';
+        const sizeMB = (data.fileSize / 1024 / 1024).toFixed(2);
+        document.getElementById('file-size').textContent = `${sizeMB} MB`;
+        document.getElementById('expiry').textContent = '🔒 Secure download link';
+        document.getElementById('download-btn').onclick = () => {
+          window.location.href = data.downloadUrl;
+        };
+        document.getElementById('download-content').style.display = 'block';
+      } catch (err) {
+        document.getElementById('file-info').textContent = '❌ Error';
+        document.getElementById('error-message').textContent = err.message;
+        document.getElementById('error-content').style.display = 'block';
+        console.error('Download error:', err);
+      }
+    }
+
+    loadTransfer();
+  </script>
+</body>
+</html>

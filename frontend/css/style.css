@@ -1,0 +1,109 @@
+:root {
+  --primary: #1a1a2e;
+  --secondary: #16213e;
+  --accent: #0f3460;
+  --highlight: #e94560;
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --radius: 16px;
+  --shadow: 0 20px 60px rgba(0,0,0,0.10);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--primary);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 3rem;
+  background: var(--card);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.logo {
+  font-weight: 800;
+  font-size: 1.6rem;
+  letter-spacing: -0.5px;
+  color: var(--primary);
+}
+.logo span { color: var(--highlight); }
+
+nav button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.6rem 1.8rem;
+  border-radius: 40px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s;
+}
+nav button:hover { background: var(--highlight); transform: scale(1.02); }
+
+.hero {
+  text-align: center;
+  padding: 3rem 1rem 1rem;
+}
+.hero h1 { font-size: 2.8rem; font-weight: 700; letter-spacing: -1px; }
+.hero p { color: #555; font-size: 1.2rem; margin-top: 0.5rem; }
+
+.upload-zone {
+  max-width: 640px;
+  margin: 2rem auto;
+  padding: 3rem 2rem;
+  background: var(--card);
+  border: 2px dashed #ccc;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-align: center;
+  transition: 0.3s;
+  cursor: pointer;
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--highlight);
+  background: #fff5f7;
+}
+.upload-icon { font-size: 4rem; }
+.upload-zone small { color: #888; display: block; margin-top: 0.5rem; }
+
+#upload-progress { margin-top: 1.5rem; }
+#progress-bar { width: 100%; height: 10px; border-radius: 10px; background: #eee; }
+#progress-bar::-webkit-progress-value { background: var(--highlight); border-radius: 10px; }
+
+#upload-result { margin-top: 1.5rem; }
+#share-link { width: 80%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; }
+
+button {
+  background: var(--highlight);
+  color: white;
+  border: none;
+  padding: 0.6rem 1.8rem;
+  border-radius: 40px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s;
+}
+button:hover { opacity: 0.85; transform: scale(1.02); }
+
+#recipient-email {
+  padding: 0.6rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  width: 60%;
+  margin: 0.5rem 0;
+}
+
+@media (max-width: 640px) {
+  header { flex-direction: column; gap: 0.5rem; padding: 1rem; }
+  .hero h1 { font-size: 2rem; }
+  .upload-zone { margin: 1rem; padding: 2rem 1rem; }
+}

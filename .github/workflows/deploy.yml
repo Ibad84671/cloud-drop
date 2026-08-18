@@ -1,0 +1,47 @@
+name: Deploy CloudDrop
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Lint Frontend
+      run: echo "Linting..."
+    - name: Validate CloudFormation
+      run: |
+        aws cloudformation validate-template --template-body file://infrastructure/cfn/main.yaml
+      env:
+        AWS_DEFAULT_REGION: us-east-1
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    - name: Deploy CloudFormation
+      run: |
+        aws cloudformation deploy \
+          --template-file infrastructure/cfn/main.yaml \
+          --stack-name clouddrop-dev \
+          --parameter-overrides Environment=dev \
+          --capabilities CAPABILITY_IAM
+    - name: Sync Frontend
+      run: |
+        aws s3 sync frontend/ s3://clouddrop-frontend-dev-$(aws sts get-caller-identity --query Account --output text) --delete
+    - name: Invalidate CloudFront
+      run: |
+        DIST_ID=$(aws cloudformation describe-stack-resource --stack-name clouddrop-dev --logical-resource-id CloudFrontDistribution --query StackResourceDetail.PhysicalResourceId --output text)
+        aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"

@@ -1,0 +1,22 @@
+# Node
+node_modules/
+package-lock.json
+
+# AWS
+.aws/
+.env
+*.pem
+*.key
+
+# Build outputs
+dist/
+*.zip
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

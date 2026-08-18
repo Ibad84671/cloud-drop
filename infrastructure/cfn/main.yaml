@@ -1,0 +1,613 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudDrop - Core Stack (S3, CloudFront, DynamoDB, Lambda, API Gateway, Cognito)'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+Resources:
+  # ========== S3 Buckets ==========
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'clouddrop-frontend-${Environment}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  UploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'clouddrop-uploads-${Environment}-${AWS::AccountId}'
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAfter30Days
+            Status: Enabled
+            ExpirationInDays: 30
+      VersioningConfiguration:
+        Status: Enabled
+
+  # ========== CloudFront (without function association) ==========
+  OAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub 'OAI for ${Environment}'
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Frontend
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${OAI}'
+        DefaultCacheBehavior:
+          TargetOriginId: S3Frontend
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6'
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        PriceClass: PriceClass_100
+
+  # ========== DynamoDB ==========
+  MetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'CloudDrop-Metadata-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: transferId
+          AttributeType: S
+        - AttributeName: ownerId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: transferId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: OwnerIndex
+          KeySchema:
+            - AttributeName: ownerId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ========== Lambda Execution Role ==========
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudDropLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub '${UploadsBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !GetAtt MetadataTable.Arn
+
+  # ========== Lambda Functions ==========
+  CreateTransferFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
+          const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+          const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+          const crypto = require('crypto');
+          const client = new DynamoDBClient({});
+          const docClient = DynamoDBDocumentClient.from(client);
+          const s3Client = new S3Client({});
+          const TABLE_NAME = process.env.TABLE_NAME;
+          const BUCKET = process.env.UPLOADS_BUCKET;
+          exports.handler = async (event) => {
+            try {
+              const body = JSON.parse(event.body);
+              const { fileName, fileSize, contentType } = body;
+              const transferId = crypto.randomUUID();
+              const objectKey = `uploads/${crypto.randomUUID()}`;
+              const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+              const ttl = Math.floor(expiresAt.getTime() / 1000);
+              const ownerId = event.requestContext?.authorizer?.claims?.sub || 'guest';
+              await docClient.send(new PutCommand({
+                TableName: TABLE_NAME,
+                Item: {
+                  transferId,
+                  objectKey,
+                  originalFileName: fileName,
+                  fileSize,
+                  contentType,
+                  status: 'pending',
+                  createdAt: new Date().toISOString(),
+                  expiresAt: expiresAt.toISOString(),
+                  ttl,
+                  downloadCount: 0,
+                  ownerId,
+                }
+              }));
+              const command = new PutObjectCommand({
+                Bucket: BUCKET,
+                Key: objectKey,
+                ContentType: contentType,
+              });
+              const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+              return {
+                statusCode: 200,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ transferId, uploadUrl })
+              };
+            } catch (error) {
+              console.error(error);
+              return {
+                statusCode: 500,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: error.message })
+              };
+            }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetadataTable
+          UPLOADS_BUCKET: !Ref UploadsBucket
+
+  CompleteUploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+          const client = new DynamoDBClient({});
+          const docClient = DynamoDBDocumentClient.from(client);
+          const TABLE_NAME = process.env.TABLE_NAME;
+          exports.handler = async (event) => {
+            try {
+              const transferId = event.pathParameters.id;
+              await docClient.send(new UpdateCommand({
+                TableName: TABLE_NAME,
+                Key: { transferId },
+                UpdateExpression: 'SET #status = :ready',
+                ExpressionAttributeNames: { '#status': 'status' },
+                ExpressionAttributeValues: { ':ready': 'ready' }
+              }));
+              return {
+                statusCode: 200,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ message: 'Upload completed successfully' })
+              };
+            } catch (error) {
+              console.error(error);
+              return {
+                statusCode: 500,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: error.message })
+              };
+            }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetadataTable
+
+  GetTransferFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+          const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+          const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+          const client = new DynamoDBClient({});
+          const docClient = DynamoDBDocumentClient.from(client);
+          const s3Client = new S3Client({});
+          const TABLE_NAME = process.env.TABLE_NAME;
+          const BUCKET = process.env.UPLOADS_BUCKET;
+          exports.handler = async (event) => {
+            try {
+              const transferId = event.pathParameters.id;
+              const result = await docClient.send(new GetCommand({
+                TableName: TABLE_NAME,
+                Key: { transferId }
+              }));
+              const item = result.Item;
+              if (!item) {
+                return { statusCode: 404, body: JSON.stringify({ error: 'Transfer not found' }) };
+              }
+              if (item.status !== 'ready') {
+                return { statusCode: 400, body: JSON.stringify({ error: 'Upload not complete yet' }) };
+              }
+              if (new Date(item.expiresAt) < new Date()) {
+                return { statusCode: 410, body: JSON.stringify({ error: 'Transfer expired' }) };
+              }
+              const command = new GetObjectCommand({
+                Bucket: BUCKET,
+                Key: item.objectKey,
+                ResponseContentDisposition: `attachment; filename="${item.originalFileName}"`
+              });
+              const downloadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+              docClient.send(new UpdateCommand({
+                TableName: TABLE_NAME,
+                Key: { transferId },
+                UpdateExpression: 'ADD downloadCount :inc',
+                ExpressionAttributeValues: { ':inc': 1 }
+              })).catch(() => {});
+              return {
+                statusCode: 200,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ downloadUrl, fileName: item.originalFileName, fileSize: item.fileSize })
+              };
+            } catch (error) {
+              console.error(error);
+              return {
+                statusCode: 500,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: error.message })
+              };
+            }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetadataTable
+          UPLOADS_BUCKET: !Ref UploadsBucket
+
+  ListTransfersFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+          const client = new DynamoDBClient({});
+          const docClient = DynamoDBDocumentClient.from(client);
+          const TABLE_NAME = process.env.TABLE_NAME;
+          exports.handler = async (event) => {
+            try {
+              const ownerId = event.requestContext.authorizer.claims.sub;
+              const result = await docClient.send(new QueryCommand({
+                TableName: TABLE_NAME,
+                IndexName: 'OwnerIndex',
+                KeyConditionExpression: 'ownerId = :ownerId',
+                ExpressionAttributeValues: { ':ownerId': ownerId }
+              }));
+              return {
+                statusCode: 200,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify(result.Items || [])
+              };
+            } catch (error) {
+              console.error(error);
+              return {
+                statusCode: 500,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: error.message })
+              };
+            }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetadataTable
+
+  DeleteTransferFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, DeleteCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
+          const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+          const client = new DynamoDBClient({});
+          const docClient = DynamoDBDocumentClient.from(client);
+          const s3Client = new S3Client({});
+          const TABLE_NAME = process.env.TABLE_NAME;
+          const BUCKET = process.env.UPLOADS_BUCKET;
+          exports.handler = async (event) => {
+            try {
+              const transferId = event.pathParameters.id;
+              const ownerId = event.requestContext.authorizer.claims.sub;
+              const getResult = await docClient.send(new GetCommand({
+                TableName: TABLE_NAME,
+                Key: { transferId }
+              }));
+              const item = getResult.Item;
+              if (!item) {
+                return { statusCode: 404, body: JSON.stringify({ error: 'Transfer not found' }) };
+              }
+              if (item.ownerId !== ownerId) {
+                return { statusCode: 403, body: JSON.stringify({ error: 'Forbidden' }) };
+              }
+              await docClient.send(new DeleteCommand({
+                TableName: TABLE_NAME,
+                Key: { transferId }
+              }));
+              if (item.objectKey) {
+                await s3Client.send(new DeleteObjectCommand({
+                  Bucket: BUCKET,
+                  Key: item.objectKey
+                }));
+              }
+              return {
+                statusCode: 200,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ message: 'Transfer deleted' })
+              };
+            } catch (error) {
+              console.error(error);
+              return {
+                statusCode: 500,
+                headers: { 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: error.message })
+              };
+            }
+          };
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref MetadataTable
+          UPLOADS_BUCKET: !Ref UploadsBucket
+
+  # ========== Cognito ==========
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub 'CloudDrop-UserPool-${Environment}'
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+          AttributeDataType: String
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'CloudDrop-Client-${Environment}'
+      UserPoolId: !Ref CognitoUserPool
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: false
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub 'clouddrop-${AWS::AccountId}-${Environment}'
+      UserPoolId: !Ref CognitoUserPool
+
+  # ========== API Gateway ==========
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'CloudDrop-API-${Environment}'
+      Description: 'CloudDrop REST API with Cognito'
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  CognitoAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: CognitoAuthorizer
+      RestApiId: !Ref ApiGateway
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      ProviderARNs:
+        - !GetAtt CognitoUserPool.Arn
+
+  TransferResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: transfer
+
+  TransferIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref TransferResource
+      PathPart: '{id}'
+
+  TransferCompleteResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref TransferIdResource
+      PathPart: complete
+
+  UserResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: user
+
+  UserTransfersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref UserResource
+      PathPart: transfers
+
+  # Public endpoints
+  TransferPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref TransferResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateTransferFunction.Arn}/invocations'
+
+  TransferGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref TransferIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetTransferFunction.Arn}/invocations'
+
+  TransferCompletePostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref TransferCompleteResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CompleteUploadFunction.Arn}/invocations'
+
+  # Protected endpoints
+  UserTransfersGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UserTransfersResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListTransfersFunction.Arn}/invocations'
+
+  TransferDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref TransferIdResource
+      HttpMethod: DELETE
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteTransferFunction.Arn}/invocations'
+
+  # Lambda permissions
+  InvokeCreateTransferPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CreateTransferFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/transfer'
+
+  InvokeGetTransferPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetTransferFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/GET/transfer/{id}'
+
+  InvokeCompleteUploadPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CompleteUploadFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/transfer/{id}/complete'
+
+  InvokeListTransfersPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ListTransfersFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/GET/user/transfers'
+
+  InvokeDeleteTransferPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref DeleteTransferFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/DELETE/transfer/{id}'
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - TransferPostMethod
+      - TransferGetMethod
+      - TransferCompletePostMethod
+      - UserTransfersGetMethod
+      - TransferDeleteMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: prod
+
+Outputs:
+  CloudFrontURL:
+    Description: 'CloudDrop Frontend URL'
+    Value: !GetAtt CloudFrontDistribution.DomainName
+  ApiGatewayURL:
+    Description: 'API Gateway URL'
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod'
+  CognitoUserPoolId:
+    Description: 'Cognito User Pool ID'
+    Value: !Ref CognitoUserPool
+  CognitoClientId:
+    Description: 'Cognito App Client ID'
+    Value: !Ref CognitoUserPoolClient
+  CognitoDomain:
+    Description: 'Cognito Hosted UI Domain'
+    Value: !Ref CognitoUserPoolDomain

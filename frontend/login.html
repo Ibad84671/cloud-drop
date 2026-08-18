@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - CloudDrop</title>
+    <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+    <header>
+        <div class="logo">☁️ CloudDrop</div>
+        <nav>
+            <button onclick="window.location.href='/'">Home</button>
+        </nav>
+    </header>
+    <main style="text-align:center;padding:3rem;">
+        <h2>Sign In or Sign Up</h2>
+        <p style="color:#888;margin:1rem 0;">You will be redirected to Cognito Hosted UI.</p>
+        <button onclick="window.location.href='https://clouddrop-502263855269-dev.auth.us-east-1.amazoncognito.com/login?client_id=5rp8tss9iu3s1jb4p5qdljog2e&response_type=token&redirect_uri='+encodeURIComponent(window.location.origin+'/dashboard.html')">
+            Login / Sign Up
+        </button>
+        <p style="margin-top:2rem;"><a href="/">← Back to home</a></p>
+    </main>
+</body>
+</html>
