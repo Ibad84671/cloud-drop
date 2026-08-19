@@ -1,12 +1,17 @@
-# Node
+# Node / local dependencies
 node_modules/
-package-lock.json
+.npm/
 
-# AWS
+# AWS local credentials / secrets
 .aws/
 .env
+.env.*
 *.pem
 *.key
+
+# Deployment artifacts
+.artifacts/
+frontend/js/config.js
 *.zip
 
 # OS
