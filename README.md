@@ -2,7 +2,7 @@
 
 > **Send files. Share the link. Done.**
 
-CloudDrop is a fast, frictionless serverless file-transfer application built on AWS. Upload one or more files without creating an account, receive a shareable link, and let recipients download the transfer directly from private S3 through short-lived presigned URLs.
+CloudDrop is a fast, private, serverless file-transfer application built on AWS. It keeps guest sharing frictionless while giving authenticated users an optional dashboard for managing their own transfers.
 
 [![License](https://img.shields.io/badge/license-MIT-111827.svg)](LICENSE.txt)
 [![AWS](https://img.shields.io/badge/AWS-serverless-FF9900.svg)](https://aws.amazon.com/serverless/)
@@ -10,115 +10,111 @@ CloudDrop is a fast, frictionless serverless file-transfer application built on 
 [![IaC](https://img.shields.io/badge/IaC-CloudFormation-FF9900.svg)](infrastructure/cfn/main.yaml)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg)](.github/workflows/deploy.yml)
 
-**Live demo:** [https://d4smvqjjk25nu.cloudfront.net](https://d4smvqjjk25nu.cloudfront.net)
+**Live deployment:** use the `CloudFrontURL` output from the deployed CloudFormation stack.
 
 ---
 
-## Why CloudDrop?
+## What CloudDrop does
 
-Most file-transfer products make a simple job feel like account management. CloudDrop keeps the core interaction deliberately small:
+The core experience is intentionally small:
 
 **Choose files → upload → get a link → share.**
 
-Authentication is optional. Guests can use the primary sharing flow without signing up, while authenticated users get a dashboard for managing their own transfers.
+No account is required for the guest transfer flow. Files are uploaded directly from the browser to private S3 through short-lived presigned URLs. Recipients receive a short-lived download capability without receiving AWS credentials.
 
 ### Product principles
 
-- **Frictionless** — guest sharing is a first-class flow.
-- **Private by default** — uploaded objects live in private S3 storage.
-- **Direct transfer** — files move between the browser and S3 using presigned URLs rather than passing through Lambda.
-- **Short-lived access** — transfer metadata and signed download URLs have explicit expiry controls.
-- **Serverless** — no servers, containers, or always-on database required.
-- **Cost-conscious** — use managed, pay-per-use AWS primitives instead of adding infrastructure for appearance alone.
+- **Frictionless:** guest sharing remains the default.
+- **Private by default:** S3 objects are not public.
+- **Direct transfer:** file bytes do not pass through Lambda during normal upload/download.
+- **Short-lived access:** presigned URLs expire quickly.
+- **Server-side authorization:** authenticated management actions enforce ownership in Lambda.
+- **Serverless and cost-conscious:** no always-on servers, containers, RDS, NAT Gateway or Kubernetes are required.
 
 ---
 
 ## ✨ Features
 
-### File sharing
+### Transfer
 
 - Drag-and-drop and browser file selection.
-- Multi-file uploads.
-- Multi-file transfers can be packaged into a ZIP for download.
-- Upload progress and transfer completion states.
-- One-click share-link copying.
-- Optional email sharing through Amazon SES.
-- Guest transfers without mandatory authentication.
+- Single-file and multi-file transfer APIs.
+- Multi-file transfers are packaged into a ZIP for recipient download.
+- Upload progress and clear success/error states.
+- Share-link copying.
+- Optional email sharing through SES when a verified sender is configured.
+- Guest transfers without mandatory registration.
 
-### Recipient experience
+### Recipient
 
-- Dedicated transfer route: `/t/{transferId}`.
-- Transfer metadata and download state.
-- Short-lived presigned download URLs.
-- Clear handling for missing, incomplete, and expired transfers.
+- Dedicated `/t/{transferId}` transfer route.
+- Transfer state and expiry handling.
+- Short-lived presigned S3 download URLs.
+- Clean not-found, incomplete and expired states.
 
-### Account experience
+### Accounts
 
 - AWS Cognito authentication.
 - Optional authenticated dashboard.
-- List transfers belonging to the authenticated user.
-- Delete owned transfers.
+- Owner-scoped transfer listing.
+- Server-side ownership checks for deletion.
 
 ### Lifecycle
 
-- Transfer records carry expiry metadata.
-- DynamoDB TTL is configured for metadata cleanup.
-- S3 lifecycle expiration is intended to remove stored transfer objects.
-- Download counts are tracked in transfer metadata.
+- Seven-day application transfer expiry.
+- DynamoDB TTL for metadata cleanup.
+- S3 lifecycle expiration for stored objects.
+- Download counters.
 
 ---
 
 ## 🏗️ Architecture
 
-CloudDrop deliberately keeps the runtime architecture small:
-
 ```mermaid
 flowchart TD
-    U[User / Browser]
-    CF[Amazon CloudFront]
-    FE[(Private S3 Frontend Bucket)]
-    API[Amazon API Gateway]
-    L1[AWS Lambda]
-    DDB[(Amazon DynamoDB)]
-    S3[(Private S3 Upload Bucket)]
-    COG[AWS Cognito]
-    SES[Amazon SES]
-    TTL[DynamoDB TTL / S3 Lifecycle]
+    B[Browser]
+    CF[CloudFront]
+    FE[(Private Frontend S3)]
+    API[API Gateway]
+    L[AWS Lambda]
+    D[(DynamoDB)]
+    S[(Private Upload S3)]
+    C[Cognito]
+    E[SES optional]
 
-    U -->|HTTPS| CF
-    CF -->|Static assets| FE
-    U -->|REST API| API
-    API --> L1
-    L1 --> DDB
-    L1 -->|Create signed PUT/GET URLs| S3
-    U -->|Direct upload/download| S3
-    U -. optional authentication .-> COG
-    COG -. JWT .-> API
-    L1 -->|Optional email sharing| SES
-    DDB -. expiry .-> TTL
-    S3 -. object lifecycle .-> TTL
+    B -->|HTTPS| CF
+    CF --> FE
+    B -->|REST| API
+    API --> L
+    L --> D
+    L -->|presigned PUT/GET| S
+    B -->|direct file transfer| S
+    B -. optional login .-> C
+    C -. JWT .-> API
+    L -. optional email .-> E
+    D -. TTL .-> D
+    S -. lifecycle .-> S
 ```
 
-### Why this architecture?
+### AWS services
 
-| Layer | AWS service | Responsibility |
-|---|---|---|
-| Edge | CloudFront | HTTPS delivery, CDN caching, transfer-route handling |
-| Frontend | S3 | Private static website assets |
-| API | API Gateway | REST entry point for transfer operations |
-| Compute | Lambda | Stateless application logic and signed URL generation |
-| Storage | S3 | Private file/object storage |
-| Metadata | DynamoDB | Transfer state, ownership, expiry and download metadata |
-| Auth | Cognito | Optional user authentication and protected dashboard routes |
-| Email | SES | Optional transfer-link email delivery |
-| IaC | CloudFormation | AWS resource definition and deployment |
-| CI/CD | GitHub Actions | Validation and deployment automation |
+| Service | Responsibility |
+|---|---|
+| **Amazon S3** | Private frontend assets and private transfer objects |
+| **Amazon CloudFront** | HTTPS/CDN delivery and `/t/*` route rewriting |
+| **API Gateway** | REST API entry point |
+| **AWS Lambda** | Validation, transfer state, authorization and signed URLs |
+| **DynamoDB** | Transfer metadata, ownership, expiry and download counters |
+| **Cognito** | Optional authentication for account management |
+| **SES** | Optional transfer-link email delivery |
+| **CloudFormation** | Infrastructure as Code |
+| **GitHub Actions** | Validation and deployment automation |
 
-No EC2, RDS, ECS, EKS, NAT Gateway, or always-on application server is required by the core design.
+The design deliberately avoids EC2, RDS, ECS, EKS, NAT Gateway, ElastiCache and third-party monitoring services.
 
 ---
 
-## 🔄 Request Flows
+## 🔄 Request lifecycle
 
 ### Guest upload
 
@@ -130,17 +126,17 @@ sequenceDiagram
     participant D as DynamoDB
     participant S as Private S3
 
-    B->>A: POST /batch (file metadata)
-    A->>L: Invoke batch-create
+    B->>A: POST /batch
+    A->>L: Validate metadata
     L->>D: Create pending transfer
     L-->>B: Transfer ID + presigned PUT URLs
-    B->>S: Direct PUT uploads
+    B->>S: Upload files directly
     B->>A: POST /batch/{id}/complete
-    A->>L: Invoke batch-complete
+    A->>L: Finalize transfer
     L->>S: Build ZIP
-    L->>D: Mark transfer ready
-    L-->>B: Completion response
-    B-->>B: Generate /t/{id} share link
+    L->>D: Mark ready
+    L-->>B: Success
+    B->>B: Create /t/{id} share link
 ```
 
 ### Recipient download
@@ -154,134 +150,120 @@ sequenceDiagram
     participant D as DynamoDB
     participant S as Private S3
 
-    R->>CF: GET /t/{transferId}
+    R->>CF: GET /t/{id}
     CF-->>R: Transfer page
     R->>A: GET /transfer/{id}
-    A->>L: Invoke get-transfer
-    L->>D: Read transfer metadata
-    L->>S: Generate short-lived presigned GET URL
-    L-->>R: Download URL + transfer metadata
-    R->>S: Direct download
+    A->>L: Resolve transfer
+    L->>D: Read metadata
+    L->>S: Create short-lived GET URL
+    L-->>R: Download capability
+    R->>S: Download directly
 ```
 
 ### Authenticated management
 
 ```text
 Cognito login
-    ↓
-JWT supplied to protected API routes
-    ↓
+   ↓
+JWT → protected API
+   ↓
 GET /user/transfers
-    ↓
-DynamoDB OwnerIndex query
-    ↓
-User sees only their own transfers
+   ↓
+OwnerIndex query
+   ↓
+Only the authenticated user's transfers
 
 DELETE /transfer/{id}
-    ↓
+   ↓
 Server-side owner check
-    ↓
-Delete metadata + associated S3 objects
+   ↓
+Delete metadata + S3 objects
 ```
 
 ---
 
-## 🔐 Security Model
+## 🔐 Security model
 
-CloudDrop is designed around the principle that the browser should never need AWS credentials.
+CloudDrop follows a simple security boundary: **the browser gets capabilities, never AWS credentials.**
 
 ### Storage
 
-- Upload objects are stored in an S3 bucket with Block Public Access enabled.
-- Files are uploaded directly using presigned S3 URLs.
-- Downloads use short-lived presigned GET URLs.
-- The application does not stream file bytes through Lambda.
+- S3 Block Public Access is enabled.
+- Frontend S3 access is through CloudFront OAI.
+- Uploads use presigned PUT URLs.
+- Downloads use presigned GET URLs with a five-minute signing window.
+- Object keys are generated server-side rather than derived directly from user filenames.
+- S3 uses server-side encryption.
 
 ### Authorization
 
-- Guest routes are intentionally public because guest sharing is a core product requirement.
-- Authenticated management routes use Cognito authorization.
-- Transfer ownership is checked server-side before destructive operations.
-- Frontend state is never treated as an authorization boundary.
+- Guest transfer creation/download is intentionally public.
+- Dashboard listing and deletion are Cognito-protected API operations.
+- Lambda compares the authenticated Cognito subject with the stored `ownerId` before deletion.
+- Frontend authentication state is never treated as an authorization boundary.
 
-### Data lifecycle
+### Validation
 
-- Transfers carry explicit expiration timestamps.
-- DynamoDB TTL is enabled for metadata cleanup.
-- S3 lifecycle rules are used for object expiration.
-- Expired transfers are rejected by the application even before eventual background cleanup completes.
+Server-side validation covers file count, file size, total size, filenames, transfer identifiers, expiry and email/link input. User-controlled filenames are sanitized before being placed in download response headers.
 
-### Important operational rule
+### Error handling
 
-A presigned URL is a capability: anyone who possesses it can use it until it expires. CloudDrop therefore keeps signed download URLs short-lived and keeps the underlying S3 objects private.
+Clients receive stable error codes/messages instead of raw AWS exception messages. Lambda logs retain diagnostic context without logging credentials or presigned URLs.
 
-For vulnerability reporting, see [SECURITY.md](SECURITY.md).
+### Presigned URL warning
+
+A presigned URL is a bearer capability: anyone holding it can use it until it expires. CloudDrop therefore keeps the underlying bucket private and keeps signed download URLs short-lived.
+
+See [`SECURITY.md`](SECURITY.md) for the vulnerability-reporting and deployment-security policy.
 
 ---
 
-## 🌐 API Surface
+## 🌐 API surface
 
-The current CloudFormation template defines these primary API routes:
-
-| Method | Route | Auth | Purpose |
+| Method | Route | Authentication | Purpose |
 |---|---|---|---|
-| `POST` | `/transfer` | Guest / optional auth | Create a single-file transfer and receive a presigned upload URL |
-| `GET` | `/transfer/{id}` | Public | Resolve transfer metadata and a short-lived download URL |
-| `POST` | `/transfer/{id}/complete` | Public | Mark a single-file upload complete |
-| `POST` | `/batch` | Guest / optional auth | Create a multi-file transfer and presigned upload URLs |
-| `POST` | `/batch/{id}/complete` | Public | Build the ZIP and finalize a batch transfer |
-| `GET` | `/user/transfers` | Cognito | List transfers owned by the authenticated user |
-| `DELETE` | `/transfer/{id}` | Cognito | Delete an owned transfer and associated objects |
-| `POST` | `/send-email` | Public | Send a transfer link through SES |
+| `POST` | `/transfer` | Guest / optional auth | Single-file transfer creation |
+| `GET` | `/transfer/{id}` | Public | Resolve a ready transfer and create a download URL |
+| `POST` | `/transfer/{id}/complete` | Public | Complete a single-file upload |
+| `DELETE` | `/transfer/{id}` | Cognito | Delete an owned transfer |
+| `POST` | `/batch` | Guest / optional auth | Create a multi-file transfer |
+| `POST` | `/batch/{id}/complete` | Public | Finalize a multi-file ZIP transfer |
+| `GET` | `/user/transfers` | Cognito | List owned transfers |
+| `POST` | `/send-email` | Public | Send a transfer link when SES is configured |
 
-> API Gateway URLs are generated from the CloudFormation stack. Do not hard-code a deployed API URL in documentation; use the stack output for the active environment.
+API URLs are generated by CloudFormation; the deployment workflow writes the active API URL to `frontend/js/config.js` rather than embedding an environment-specific API endpoint in the source page.
 
 ---
 
-## 🗂️ Repository Structure
+## 🗂️ Repository structure
 
 ```text
 cloud-drop/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml              # GitHub Actions validation/deployment
-│
-├── backend/
-│   └── functions/                  # Standalone Lambda source implementations
-│       ├── batch-complete/
-│       ├── batch-create/
-│       ├── complete-upload/
-│       ├── create-transfer/
-│       ├── get-transfer/
-│       └── send-email/
-│
-├── docs/
-│   └── adr/                        # Architecture Decision Records
-│
+├── .github/workflows/deploy.yml
+├── backend/functions/              # Standalone Lambda source
+│   ├── batch-complete/
+│   ├── batch-create/
+│   ├── complete-upload/
+│   ├── create-transfer/
+│   ├── get-transfer/
+│   └── send-email/
+├── docs/adr/                       # Architecture decisions
 ├── frontend/
-│   ├── css/
-│   │   └── style.css               # Shared UI styles
-│   ├── js/
-│   │   └── theme.js                # Theme handling
-│   ├── index.html                   # Guest upload experience
-│   ├── login.html                   # Authentication entry point
-│   ├── signup.html                  # Registration flow
-│   ├── dashboard.html               # Authenticated transfer management
-│   └── t.html                        # Recipient download experience
-│
-├── infrastructure/
-│   └── cfn/
-│       └── main.yaml               # CloudFormation stack
-│
-├── scripts/
-│   ├── deploy.sh                    # Manual deployment helper
-│   └── destroy.sh                   # Stack teardown helper
-│
-├── cloudfront-function.js           # CloudFront viewer-request logic
-├── cors.json                        # S3 CORS configuration helper
-├── deploy-lambdas.bat               # Windows Lambda deployment helper
-├── package.json                     # Project scripts/dependencies
-├── setup.sh                          # Environment/setup helper
+│   ├── css/style.css
+│   ├── js/config.js
+│   ├── js/theme.js
+│   ├── index.html
+│   ├── login.html
+│   ├── signup.html
+│   ├── dashboard.html
+│   └── t.html
+├── infrastructure/cfn/main.yaml
+├── scripts/deploy.sh
+├── scripts/destroy.sh
+├── cloudfront-function.js
+├── cors.json
+├── deploy-lambdas.bat
+├── setup.sh
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
 ├── LICENSE.txt
@@ -289,7 +271,7 @@ cloud-drop/
 └── README.md
 ```
 
-> **Implementation note:** the current CloudFormation stack contains inline Lambda handlers, while `backend/functions/` contains standalone function source. When changing backend behavior, keep the deployed CloudFormation implementation and standalone source synchronized unless the deployment model is intentionally migrated.
+> CloudFormation currently contains inline Lambda handlers while `backend/functions/` contains standalone source. This is intentionally documented rather than hidden. Backend changes must remain synchronized with the deployed IaC until the packaging model is migrated.
 
 ---
 
@@ -297,25 +279,14 @@ cloud-drop/
 
 ### Prerequisites
 
-Install and configure:
-
-- AWS CLI with credentials authorized to deploy the stack.
+- AWS CLI configured for the target account.
 - Git.
-- Node.js/npm if you use the project tooling.
-- An AWS account with permission to create the resources defined in `infrastructure/cfn/main.yaml`.
+- Node.js for local JavaScript tooling.
+- An AWS identity authorized to deploy the CloudFormation resources.
+- For multi-file ZIP support, provide the `ArchiverLayerArn` parameter for a Lambda layer containing `archiver`.
+- For email sharing, provide `SesSourceEmail` using an SES-verified sender.
 
-### Deploy with the project script
-
-```bash
-git clone https://github.com/Ibad84671/cloud-drop.git
-cd cloud-drop
-
-./scripts/deploy.sh
-```
-
-On Windows, the repository also includes batch deployment helpers where required by the current workflow.
-
-### Deploy manually
+### CloudFormation
 
 ```bash
 aws cloudformation deploy \
@@ -323,152 +294,136 @@ aws cloudformation deploy \
   --stack-name clouddrop-dev \
   --parameter-overrides Environment=dev \
   --capabilities CAPABILITY_IAM
+```
 
+Then sync the frontend:
+
+```bash
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 aws s3 sync frontend/ "s3://clouddrop-frontend-dev-${ACCOUNT_ID}" --delete
+```
 
+Invalidate CloudFront after frontend changes:
+
+```bash
 DIST_ID=$(aws cloudformation describe-stack-resource \
   --stack-name clouddrop-dev \
   --logical-resource-id CloudFrontDistribution \
   --query StackResourceDetail.PhysicalResourceId \
   --output text)
-
-aws cloudfront create-invalidation \
-  --distribution-id "$DIST_ID" \
-  --paths '/*'
+aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
 ```
 
-### Read stack outputs
+### GitHub Actions
 
-```bash
-aws cloudformation describe-stacks \
-  --stack-name clouddrop-dev \
-  --query 'Stacks[0].Outputs'
+Pushes to `main` run validation and deployment. The deployment workflow uses GitHub OIDC and expects the repository secret:
+
+```text
+AWS_DEPLOY_ROLE_ARN
 ```
 
-Useful outputs include:
+The AWS role should trust the GitHub Actions OIDC provider and be limited to the resources/actions required by the deployment process.
 
-- `CloudFrontURL`
-- `ApiGatewayURL`
-- `CognitoUserPoolId`
-- `CognitoClientId`
-- `CognitoDomain`
+The workflow also generates `frontend/js/config.js` from the deployed `ApiGatewayURL`, so environment-specific API URLs do not need to be committed.
 
 ---
 
-## 🧪 Validation & CI/CD
+## 🧪 Validation
 
-The repository uses GitHub Actions for the main deployment workflow.
+CI performs:
 
-The current workflow performs CloudFormation validation and, for pushes to `main`, deploys the stack, synchronizes the frontend, and invalidates CloudFront.
+- JavaScript syntax checks with `node --check`.
+- Merge-conflict marker detection.
+- CloudFormation linting with `cfn-lint`.
+- AWS CloudFormation template validation.
+- Deployment only after validation succeeds.
 
-For local validation, at minimum run:
+Useful local command:
 
 ```bash
 aws cloudformation validate-template \
   --template-body file://infrastructure/cfn/main.yaml
 ```
 
-For frontend changes, verify the core flows manually in a browser:
+Core manual acceptance flow:
 
-1. Open the upload page.
+1. Open CloudDrop.
 2. Upload one or more files.
-3. Confirm the upload completes.
-4. Copy/open the generated transfer link.
+3. Confirm progress reaches completion.
+4. Copy/open the generated `/t/{id}` link.
 5. Download the transfer.
-6. Verify an expired or unknown transfer shows an appropriate error.
-7. If authenticated, verify the dashboard only shows the current user's transfers.
+6. Test an unknown/expired transfer.
+7. Sign in and verify the dashboard contains only the authenticated user's transfers.
+8. Attempt deletion and verify ownership is enforced.
 
-> The repository currently does not contain a comprehensive automated unit/integration test suite. Manual verification is therefore important until those tests are added.
-
----
-
-## 💸 Cost Philosophy
-
-CloudDrop is intentionally designed around low operational overhead rather than maximum infrastructure density.
-
-The core runtime uses managed, pay-per-use services:
-
-- S3 for static assets and file storage.
-- CloudFront for delivery.
-- API Gateway for HTTP requests.
-- Lambda for compute.
-- DynamoDB on-demand for transfer metadata.
-- Cognito only for optional authentication.
-- SES only when email sharing is used.
-
-There is deliberately **no always-on compute layer** and no NAT Gateway, relational database, container platform, Kubernetes cluster, cache cluster, or third-party observability platform in the core architecture.
-
-Actual AWS cost depends on storage, transfer volume, API traffic, CloudFront usage, email volume, and the AWS pricing model/region in use. The repository therefore avoids promising a fixed monthly bill.
+The repository does not yet contain a complete automated integration-test suite, so deployment validation and manual end-to-end verification remain important.
 
 ---
 
-## 🧭 Architecture Decisions
+## 💸 Cost philosophy
 
-The major architectural choices are documented as ADRs in [`docs/adr/`](docs/adr/):
+CloudDrop is designed for production quality without automatically turning into an expensive AWS estate.
 
-- [ADR-001 — S3 object storage](docs/adr/ADR-001-s3-object-storage.md)
-- [ADR-002 — Direct S3 uploads](docs/adr/ADR-002-direct-s3-uploads.md)
-- [ADR-003 — DynamoDB instead of RDS](docs/adr/ADR-003-dynamodb-instead-of-rds.md)
-- [ADR-004 — Lambda instead of EC2](docs/adr/ADR-004-lambda-instead-of-ec2.md)
-- [ADR-005 — CloudFront](docs/adr/ADR-005-cloudfront.md)
-- [ADR-006 — Optional Cognito authentication](docs/adr/ADR-006-cognito-optional.md)
-- [ADR-007 — No NAT Gateway](docs/adr/ADR-007-no-nat-gateway.md)
-- [ADR-008 — Serverless for cost](docs/adr/ADR-008-serverless-for-cost.md)
-- [ADR-009 — EventBridge cleanup](docs/adr/ADR-009-eventbridge-cleanup.md)
-- [ADR-010 — S3 lifecycle expiration](docs/adr/ADR-010-s3-lifecycle-expiration.md)
+Core services are pay-per-use/serverless:
+
+- S3
+- CloudFront
+- API Gateway
+- Lambda
+- DynamoDB on-demand
+- Cognito when accounts are used
+- SES when email sharing is used
+
+No NAT Gateway, RDS, ECS, EKS, ElastiCache or always-on application server is required.
+
+There is intentionally no fixed "\$0.10/month" promise: real cost depends on storage, data transfer, API calls, CloudFront requests, Lambda execution, DynamoDB usage and email volume.
 
 ---
 
-## 🛡️ Production Considerations
+## 🧭 Architecture decisions
 
-CloudDrop's architecture is production-oriented, but production readiness is more than selecting serverless services. Before operating it as a public high-volume service, review the deployed AWS configuration for:
+See [`docs/adr/`](docs/adr/) for the project's recorded architectural decisions, including:
 
-- IAM least privilege per Lambda rather than shared broad roles.
-- Explicit API Gateway throttling/quotas appropriate to expected abuse.
-- Strict server-side file count, size, filename and metadata validation.
-- Appropriate S3 CORS origins for the deployed frontend.
-- Security headers and a CSP compatible with Cognito and required assets.
-- CloudFormation validation in CI before deployment.
-- GitHub Actions authentication using short-lived AWS credentials/OIDC rather than long-lived access keys where supported.
-- SES production access and sender/domain verification before relying on email delivery.
-- Monitoring and alerting appropriate to the expected traffic level.
-- Rotation/revocation of any credential that may ever have been committed accidentally.
+- S3 object storage.
+- Direct browser-to-S3 uploads.
+- DynamoDB instead of RDS.
+- Lambda instead of EC2.
+- CloudFront delivery.
+- Optional Cognito authentication.
+- No NAT Gateway.
+- Serverless cost model.
+- Cleanup/lifecycle strategy.
 
-These are operational controls, not reasons to add unnecessary AWS services.
+---
+
+## 🛡️ Production checklist
+
+Before treating a deployment as a public high-volume service, verify:
+
+- [ ] GitHub OIDC deployment role is least privilege.
+- [ ] No long-lived AWS access keys are stored in GitHub Actions.
+- [ ] `FrontendOrigin` is restricted to the real CloudFront/custom-domain origin instead of `*`.
+- [ ] SES sender/domain is verified and production access is enabled if email sharing is used.
+- [ ] `ArchiverLayerArn` points to a tested layer for batch ZIP creation.
+- [ ] API Gateway throttling/quotas match expected public traffic and abuse risk.
+- [ ] CloudWatch log retention/alerts are appropriate for the account.
+- [ ] Any historically exposed credentials have been rotated/revoked.
+- [ ] The live guest upload, recipient download, authenticated dashboard and deletion flows have been exercised against the deployed stack.
+
+These are operational controls; they do not require adding expensive infrastructure by default.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome. Please read:
+Please read:
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) for contribution workflow.
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
-- [SECURITY.md](SECURITY.md) for vulnerability reporting.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+- [`SECURITY.md`](SECURITY.md)
 
-When contributing, prefer small, reviewable changes and preserve CloudDrop's core principle: **fast, simple, secure file sharing without mandatory accounts.**
-
----
-
-## 🔒 Security Reporting
-
-Please do not publish security vulnerabilities in a public issue.
-
-See [SECURITY.md](SECURITY.md) for the project's security policy and reporting process.
-
----
+Keep changes focused, preserve guest sharing, avoid unnecessary dependencies/services, and never commit credentials or environment secrets.
 
 ## 📄 License
 
 CloudDrop is released under the [MIT License](LICENSE.txt).
-
----
-
-## 🌟 Project
-
-CloudDrop is an AWS serverless engineering project focused on practical cloud architecture: secure object storage, presigned transfers, stateless compute, DynamoDB access patterns, optional identity, Infrastructure as Code, and cost-conscious operations.
-
-**Repository:** https://github.com/Ibad84671/cloud-drop
-
-**Live demo:** https://d4smvqjjk25nu.cloudfront.net
