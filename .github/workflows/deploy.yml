@@ -16,6 +16,7 @@ concurrency:
 env:
   AWS_REGION: us-east-1
   STACK_NAME: clouddrop-dev
+  ENVIRONMENT: dev
 
 jobs:
   validate:
@@ -57,16 +58,19 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Deploy CloudFormation
         run: |
-          aws cloudformation deploy --template-file infrastructure/cfn/main.yaml --stack-name "$STACK_NAME" --parameter-overrides Environment=dev --capabilities CAPABILITY_IAM
+          aws cloudformation deploy --template-file infrastructure/cfn/main.yaml --stack-name "$STACK_NAME" --parameter-overrides Environment="$ENVIRONMENT" --capabilities CAPABILITY_IAM
       - name: Generate deployment config
         run: |
           API_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayURL`].OutputValue' --output text)
+          CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CognitoClientId`].OutputValue' --output text)
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           test -n "$API_URL" && test "$API_URL" != "None"
-          printf 'window.CLOUDDROP_CONFIG = { apiBase: "%s" };\n' "$API_URL" > frontend/js/config.js
+          test -n "$CLIENT_ID" && test "$CLIENT_ID" != "None"
+          printf 'window.CLOUDDROP_CONFIG = { apiBase: "%s", cognitoClientId: "%s", cognitoDomain: "clouddrop-%s-%s.auth.%s.amazoncognito.com" };\n' "$API_URL" "$CLIENT_ID" "$ACCOUNT_ID" "$ENVIRONMENT" "$AWS_REGION" > frontend/js/config.js
       - name: Sync frontend
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          BUCKET="clouddrop-frontend-dev-${ACCOUNT_ID}"
+          BUCKET="clouddrop-frontend-${ENVIRONMENT}-${ACCOUNT_ID}"
           aws s3 sync frontend/ "s3://$BUCKET" --delete
       - name: Invalidate CloudFront
         run: |
