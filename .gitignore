@@ -1,26 +1,38 @@
-# Node
+# Dependencies / local installs
 node_modules/
-package-lock.json
 
-# AWS
+# AWS credentials and local environment
 .aws/
 .env
+.env.*
+!.env.example
 *.pem
 *.key
-*.zip
 
-# OS
-.DS_Store
-Thumbs.db
+# Build / deployment artifacts
+*.zip
+dist/
+build/
+coverage/
 *.log
 
-# IDE
+# OS / IDE
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
 
-# Local overrides
+# Local deployment helpers / downloaded state
+*.local
+*.tmp
 t.html-downloaded
 dist-config.json
 policy.json
 versions.json
 markers.json
+
+# Secrets and local configuration
+credentials
+credentials.json
+secrets.json
+*.secret
