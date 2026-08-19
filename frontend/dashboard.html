@@ -1,116 +1,27 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard — CloudDrop</title>
-  <link rel="stylesheet" href="/css/style.css" />
-</head>
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Manage your CloudDrop transfers"><title>Dashboard — CloudDrop</title><link rel="stylesheet" href="/css/style.css"></head>
 <body>
-  <header>
-    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
-    <nav>
-      <span id="user-email" style="font-weight:500;color:var(--text-secondary);"></span>
-      <button id="logout-btn" style="background:var(--danger);color:#fff;">Logout</button>
-      <div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div>
-    </nav>
-  </header>
-  <main class="container" style="padding:2rem 1rem;">
-    <h2 style="margin-bottom:1.5rem;">My Transfers</h2>
-    <div id="transfers-list" class="table-wrap glass">Loading...</div>
-    <div style="margin-top:1.5rem;">
-      <button onclick="window.location.href='/'" style="background:var(--accent);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">➕ New Upload</button>
-    </div>
+  <header class="site-header"><a class="brand" href="/" aria-label="CloudDrop home"><span class="brand-mark">C</span><span>CloudDrop</span></a><nav class="nav-actions"><span id="user-email" class="user-status">Signed in</span><button id="logout-btn" class="btn btn-ghost" type="button">Log out</button><button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme">◐</button></nav></header>
+  <main class="container page-shell">
+    <section class="hero" style="text-align:left;max-width:none;margin-bottom:26px"><span class="eyebrow">YOUR CLOUDDROP</span><h1 style="font-size:clamp(38px,6vw,60px)">My <span>transfers.</span></h1><p>Manage transfers created from your account.</p></section>
+    <section class="transfer-card" style="max-width:none"><div id="transfers-list" class="table-wrap" style="padding:0;border:0;background:transparent">Loading transfers…</div><div style="margin-top:18px"><a class="btn btn-primary" href="/">Create a transfer</a></div></section>
   </main>
-  <script src="/js/theme.js"></script>
+  <footer class="site-footer"><span>CloudDrop</span><span>Only you can manage your transfers.</span></footer>
+  <script src="/js/config.js"></script><script src="/js/theme.js"></script>
   <script>
-<<<<<<< HEAD
-    const API_BASE = 'https://23pm2zjtw8.execute-api.us-east-1.amazonaws.com/prod';
-=======
-    const API_BASE = 'https://zsiiwyicn3.execute-api.us-east-1.amazonaws.com/prod';
->>>>>>> 8779baac422899ac4ecc705b9cd116945b48a3b2
-    const COGNITO_DOMAIN = 'clouddrop-502263855269-dev';
-    const CLIENT_ID = '5rp8tss9iu3s1jb4p5qdljog2e';
-    const REDIRECT_URI = window.location.origin + '/dashboard.html';
-
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const idToken = params.get('id_token');
-    if (idToken) {
-      localStorage.setItem('accessToken', idToken);
-      localStorage.setItem('idToken', idToken);
-      window.location.hash = '';
-    }
-    const token = localStorage.getItem('accessToken') || localStorage.getItem('idToken');
-    if (!token) {
-      window.location.href = `https://${COGNITO_DOMAIN}.auth.us-east-1.amazoncognito.com/login?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
-    }
-
-    function parseJwt(t) {
-      try {
-        const base64Url = t.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-        return JSON.parse(jsonPayload);
-      } catch(e) { return {}; }
-    }
-    try {
-      const payload = parseJwt(token);
-      document.getElementById('user-email').textContent = payload.email || 'User';
-    } catch(e) {}
-
-    async function loadTransfers() {
-      try {
-        const res = await fetch(API_BASE + '/user/transfers', {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
-        const container = document.getElementById('transfers-list');
-        if (data.length === 0) {
-          container.innerHTML = '<p style="color:var(--text-secondary);">No transfers yet. Upload a file to get started!</p>';
-          return;
-        }
-        let html = `<table>
-          <thead><tr><th>File</th><th>Size</th><th>Status</th><th>Expires</th><th>Downloads</th><th>Action</th></tr></thead><tbody>`;
-        data.forEach(item => {
-          const sizeMB = (item.fileSize / 1024 / 1024).toFixed(2);
-          const expires = new Date(item.expiresAt).toLocaleDateString();
-          html += `<tr>
-            <td>${item.originalFileName}</td>
-            <td>${sizeMB} MB</td>
-            <td>${item.status}</td>
-            <td>${expires}</td>
-            <td>${item.downloadCount || 0}</td>
-            <td><button onclick="deleteTransfer('${item.transferId}')">Delete</button></td>
-          </tr>`;
-        });
-        html += '</tbody></table>';
-        container.innerHTML = html;
-      } catch (err) {
-        document.getElementById('transfers-list').innerHTML = '<p style="color:var(--danger);">Error loading transfers. Please try again.</p>';
-        console.error(err);
-      }
-    }
-
-    async function deleteTransfer(transferId) {
-      if (!confirm('Delete this transfer?')) return;
-      try {
-        const res = await fetch(API_BASE + '/transfer/' + transferId, {
-          method: 'DELETE',
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (res.ok) loadTransfers();
-        else alert('Delete failed');
-      } catch(e) { alert('Error deleting'); }
-    }
-
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      localStorage.clear();
-      window.location.href = '/';
-    });
-
-    loadTransfers();
+    (()=>{
+      'use strict';
+      const config=window.CLOUDDROP_CONFIG||{}; const API_BASE=config.apiBase||''; const token=localStorage.getItem('accessToken')||localStorage.getItem('idToken'); const $=id=>document.getElementById(id);
+      if(!token||!API_BASE){window.location.href='/';return;}
+      function parseJwt(value){try{return JSON.parse(atob(value.split('.')[1].replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(value.split('.')[1].length/4)*4,'=')))}catch(_){return {}}}
+      const identity=parseJwt(token); $('user-email').textContent=identity.email||'Signed in';
+      function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+      function size(bytes){if(!bytes)return '—';const mb=bytes/1024/1024;return mb<1024?`${mb.toFixed(2)} MB`:`${(mb/1024).toFixed(2)} GB`;}
+      async function load(){try{const res=await fetch(`${API_BASE}/user/transfers`,{headers:{Authorization:`Bearer ${token}`}});const body=await res.json().catch(()=>({}));if(res.status===401||res.status===403){localStorage.clear();window.location.href='/';return;}if(!res.ok)throw new Error(body?.error?.message||'Unable to load transfers.');const items=body.data||body||[];if(!items.length){$('transfers-list').innerHTML='<div class="state-panel"><strong>No transfers yet.</strong><p>Create your first transfer from the upload page.</p></div>';return;}$('transfers-list').innerHTML=`<table><thead><tr><th>File</th><th>Size</th><th>Status</th><th>Expires</th><th>Downloads</th><th></th></tr></thead><tbody>${items.map(item=>`<tr><td>${esc(item.originalFileName||item.files?.length+' files'||'Transfer')}</td><td>${size(item.fileSize||item.totalSize)}</td><td>${esc(item.status)}</td><td>${item.expiresAt?new Date(item.expiresAt).toLocaleDateString():'—'}</td><td>${Number(item.downloadCount||0)}</td><td><button type="button" data-delete="${esc(item.transferId)}">Delete</button></td></tr>`).join('')}</tbody></table>`;document.querySelectorAll('[data-delete]').forEach(btn=>btn.addEventListener('click',()=>remove(btn.dataset.delete)));}catch(error){$('transfers-list').innerHTML=`<div class="error-panel"><strong>Unable to load transfers.</strong><p>${esc(error.message)}</p></div>`;}}
+      async function remove(id){if(!id||!window.confirm('Delete this transfer? This cannot be undone.'))return;try{const res=await fetch(`${API_BASE}/transfer/${encodeURIComponent(id)}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`}});const body=await res.json().catch(()=>({}));if(!res.ok)throw new Error(body?.error?.message||'Delete failed.');load();}catch(error){window.alert(error.message);}}
+      $('logout-btn').addEventListener('click',()=>{localStorage.clear();window.location.href='/';});load();
+    })();
   </script>
 </body>
 </html>
