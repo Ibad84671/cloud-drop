@@ -1,212 +1,90 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
+<!doctype html>
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CloudDrop — Fast, Simple, Secure</title>
-  <link rel="stylesheet" href="/css/style.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="CloudDrop — fast, private, frictionless file sharing.">
+  <meta name="theme-color" content="#0b0d12">
+  <title>CloudDrop — Send files. Share the link. Done.</title>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <header>
-    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
-    <nav>
-      <span id="user-status">👤 Guest</span>
-      <button id="auth-btn" onclick="window.location.href='/login.html'">Log In</button>
-      <button onclick="window.location.href='/signup.html'" class="btn-primary">Sign Up</button>
-      <div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="CloudDrop home"><span class="brand-mark">C</span><span>CloudDrop</span></a>
+    <nav class="nav-actions" aria-label="Primary navigation">
+      <span id="user-status" class="user-status">Guest</span>
+      <a id="auth-btn" class="btn btn-ghost" href="/login.html">Log in</a>
+      <a id="signup-btn" class="btn btn-primary" href="/signup.html">Sign up</a>
+      <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme" title="Toggle theme">◐</button>
     </nav>
   </header>
-  <main class="container">
-    <section class="hero">
-      <h1>Fast, Simple, Secure File Sharing.</h1>
-      <p>Drop multiple files — they will be shared as a single ZIP.</p>
+
+  <main class="container page-shell">
+    <section class="hero" aria-labelledby="page-title">
+      <span class="eyebrow">PRIVATE FILE TRANSFER · NO ACCOUNT REQUIRED</span>
+      <h1 id="page-title">Send files.<br><span>Share the link. Done.</span></h1>
+      <p>Fast, private file sharing without the account-management headache.</p>
     </section>
-    <section class="upload-zone" id="drop-zone">
-      <div class="upload-content" id="upload-content">
-        <div class="upload-icon">📁</div>
-        <p><strong>Drop files here</strong> or click to select</p>
-        <small>Maximum total size: 2GB</small>
-        <input type="file" id="file-input" multiple style="display:none;" />
+
+    <section class="transfer-card" aria-labelledby="upload-heading">
+      <div class="card-topline">
+        <div><h2 id="upload-heading">Create a transfer</h2><p>Drop one or more files. CloudDrop keeps the originals private.</p></div>
+        <span class="security-pill">Private by default</span>
       </div>
-      <div id="upload-progress" style="display:none;">
-        <progress id="progress-bar" value="0" max="100"></progress>
-        <span id="progress-text">0%</span>
+      <div id="drop-zone" class="upload-zone" tabindex="0" role="button" aria-controls="file-input" aria-label="Choose files to upload">
+        <input type="file" id="file-input" multiple hidden>
+        <div class="upload-orb" aria-hidden="true">↑</div>
+        <h3>Drop files here</h3><p>or <span class="upload-link">browse from your device</span></p>
+        <div class="upload-limits"><span>Up to 20 files</span><span>•</span><span>2 GB total</span></div>
       </div>
-      <div id="upload-result" style="display:none;">
-        <p>✅ Transfer created!</p>
-        <input type="text" id="share-link" readonly style="width:80%;padding:0.5rem;border-radius:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text);" />
-        <br><br>
-        <button id="copy-btn" type="button" style="background:var(--accent);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">📋 Copy Link</button>
-        <input type="email" id="recipient-email" placeholder="Recipient email (optional)" style="padding:0.5rem;border-radius:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text);width:60%;margin:0.5rem 0;" />
-        <button id="email-btn" style="background:var(--accent-light);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">✉️ Send</button>
-        <br><br>
-        <button id="new-upload-btn" style="background:var(--danger);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">➕ New Upload</button>
+      <div id="file-list" class="file-list" hidden></div>
+      <div id="upload-progress" class="state-panel" hidden aria-live="polite">
+        <div class="state-heading"><span>Uploading securely</span><strong id="progress-text">0%</strong></div>
+        <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+        <p id="progress-detail">Preparing your transfer…</p>
       </div>
+      <div id="upload-result" class="success-panel" hidden aria-live="polite">
+        <div class="success-icon" aria-hidden="true">✓</div>
+        <div><span class="eyebrow success-eyebrow">TRANSFER READY</span><h3>Your link is ready.</h3><p>Anyone with the link can download the transfer until it expires.</p></div>
+        <div class="share-row"><input id="share-link" type="text" readonly aria-label="Share link"><button id="copy-btn" class="btn btn-primary" type="button">Copy link</button></div>
+        <div class="email-row"><input id="recipient-email" type="email" inputmode="email" autocomplete="email" placeholder="Recipient email (optional)" aria-label="Recipient email"><button id="email-btn" class="btn btn-secondary" type="button">Send by email</button></div>
+        <p id="email-status" class="inline-status" role="status"></p>
+        <button id="new-upload-btn" class="text-btn" type="button">Create another transfer</button>
+      </div>
+      <div id="upload-error" class="error-panel" hidden role="alert"><strong>Upload could not be completed.</strong><p id="error-text">Please try again.</p><button id="retry-btn" class="btn btn-secondary" type="button">Try again</button></div>
+    </section>
+    <section class="trust-row" aria-label="CloudDrop security highlights">
+      <div><strong>Private S3</strong><span>Objects aren't public.</span></div><div><strong>Short-lived links</strong><span>Access expires with the transfer.</span></div><div><strong>Direct upload</strong><span>Files go straight to storage.</span></div>
     </section>
   </main>
+  <footer class="site-footer"><span>CloudDrop</span><span>Fast, simple, secure.</span></footer>
+
+  <script src="/js/config.js"></script>
   <script src="/js/theme.js"></script>
   <script>
-    const API_BASE = 'https://23pm2zjtw8.execute-api.us-east-1.amazonaws.com/prod';
-    const token = localStorage.getItem('accessToken') || localStorage.getItem('idToken');
-    const statusEl = document.getElementById('user-status');
-    const authBtn = document.getElementById('auth-btn');
-    if (token) {
-      statusEl.textContent = '✅ Logged in';
-      authBtn.textContent = 'Dashboard';
-      authBtn.onclick = () => window.location.href = '/dashboard.html';
-    } else {
-      statusEl.textContent = '👤 Guest';
-      authBtn.textContent = 'Log In';
-      authBtn.onclick = () => window.location.href = '/login.html';
-    }
-
-    const dropZone = document.getElementById('drop-zone');
-    const fileInput = document.getElementById('file-input');
-
-    async function copyLinkToClipboard(link) {
-      if (!link) return alert('No link to copy!');
-      try {
-        await navigator.clipboard.writeText(link);
-        alert('✅ Link copied!');
-      } catch {
-        const temp = document.createElement('input');
-        temp.value = link;
-        document.body.appendChild(temp);
-        temp.select();
-        document.execCommand('copy');
-        document.body.removeChild(temp);
-        alert('✅ Link copied!');
-      }
-    }
-
-    document.getElementById('copy-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const input = document.getElementById('share-link');
-      copyLinkToClipboard(input.value);
-    });
-
-    document.getElementById('email-btn')?.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const email = document.getElementById('recipient-email').value.trim();
-      const link = document.getElementById('share-link').value;
-      const fileName = 'files.zip';
-
-      if (!email) {
-        alert('Please enter a recipient email.');
-        return;
-      }
-      if (!link) {
-        alert('No file to send. Please upload first.');
-        return;
-      }
-
-      try {
-        const res = await fetch(`${API_BASE}/send-email`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: email, link, fileName })
-        });
-        if (res.ok) {
-          alert('✅ Email sent successfully!');
-        } else {
-          const error = await res.json();
-          alert('❌ Email failed: ' + (error.error || 'Unknown error') + '\nPlease use Copy Link instead.');
-        }
-      } catch (err) {
-        alert('❌ Email sending failed. Please use Copy Link.');
-        console.error(err);
-      }
-    });
-
-    document.getElementById('new-upload-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      resetUpload();
-    });
-
-    function resetUpload() {
-      document.getElementById('upload-result').style.display = 'none';
-      document.getElementById('upload-content').style.display = 'block';
-      document.getElementById('upload-progress').style.display = 'none';
-    }
-
-    dropZone.addEventListener('click', (e) => {
-      if (e.target.closest('button') || e.target.closest('input')) return;
-      fileInput.click();
-    });
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', e => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-      handleFiles(e.dataTransfer.files);
-    });
-    fileInput.addEventListener('change', () => handleFiles(fileInput.files));
-
-    async function handleFiles(files) {
-      if (!files.length) return;
-      const totalSize = Array.from(files).reduce((sum, f) => sum + f.size, 0);
-      if (totalSize > 2 * 1024 ** 3) return alert('Total size exceeds 2GB limit.');
-
-      const fileInfos = Array.from(files).map(f => ({
-        fileName: f.name,
-        fileSize: f.size,
-        contentType: f.type || 'application/octet-stream'
-      }));
-
-      document.getElementById('upload-content').style.display = 'none';
-      document.getElementById('upload-progress').style.display = 'block';
-      updateProgress(0);
-
-      try {
-        const res = await fetch(`${API_BASE}/batch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files: fileInfos })
-        });
-        const data = await res.json();
-        if (!res.ok || !data.transferId || !Array.isArray(data.uploads)) {
-          throw new Error(data.error || 'Unable to initialize upload.');
-        }
-        const transferId = data.transferId;
-        const uploads = data.uploads;
-
-        let uploaded = 0;
-        for (const file of files) {
-          const uploadInfo = uploads.find(u => u.fileName === file.name);
-          if (!uploadInfo) throw new Error(`No upload URL returned for ${file.name}`);
-          const uploadRes = await fetch(uploadInfo.uploadUrl, {
-            method: 'PUT',
-            body: file,
-            headers: { 'Content-Type': file.type || 'application/octet-stream' }
-          });
-          if (!uploadRes.ok) throw new Error(`Upload failed for ${file.name}`);
-          uploaded++;
-          const progress = Math.round((uploaded / files.length) * 100);
-          updateProgress(progress);
-        }
-
-        const completeRes = await fetch(`${API_BASE}/batch/${transferId}/complete`, { method: 'POST' });
-        if (!completeRes.ok) {
-          const completeData = await completeRes.json().catch(() => ({}));
-          throw new Error(completeData.error || 'Unable to finalize transfer.');
-        }
-
-        updateProgress(100);
-        document.getElementById('upload-progress').style.display = 'none';
-        document.getElementById('upload-result').style.display = 'block';
-        const shareLink = `${window.location.origin}/t/${transferId}`;
-        document.getElementById('share-link').value = shareLink;
-        try { await navigator.clipboard.writeText(shareLink); } catch(e) {}
-      } catch (err) {
-        alert('❌ Upload failed: ' + err.message);
-        resetUpload();
-      }
-    }
-
-    function updateProgress(val) {
-      document.getElementById('progress-bar').value = val;
-      document.getElementById('progress-text').textContent = val + '%';
-    }
+    (() => {
+      'use strict';
+      const API_BASE = window.CLOUDDROP_CONFIG?.apiBase || '';
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('idToken');
+      const $ = id => document.getElementById(id);
+      const dropZone = $('drop-zone'); const fileInput = $('file-input'); let selectedFiles = [];
+      if (token) { $('user-status').textContent = 'Signed in'; $('auth-btn').textContent = 'Dashboard'; $('auth-btn').href = '/dashboard.html'; $('signup-btn').hidden = true; }
+      const formatSize = bytes => { if (bytes < 1024) return `${bytes} B`; const units=['KB','MB','GB']; let v=bytes/1024,i=0; while(v>=1024&&i<2){v/=1024;i++;} return `${v.toFixed(v>=100?0:1)} ${units[i]}`; };
+      const escapeHtml = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      function renderFiles(files){ $('file-list').innerHTML=Array.from(files).map((f,i)=>`<div class="file-row"><span class="file-type">${i+1}</span><span class="file-name">${escapeHtml(f.name)}</span><span class="file-size">${formatSize(f.size)}</span></div>`).join(''); $('file-list').hidden=false; }
+      function reset(){ selectedFiles=[]; fileInput.value=''; $('file-list').hidden=true; $('file-list').innerHTML=''; $('upload-progress').hidden=true; $('upload-result').hidden=true; $('upload-error').hidden=true; dropZone.hidden=false; }
+      async function api(path, options={}) { if(!API_BASE) throw new Error('The API endpoint is not configured for this deployment.'); const headers=new Headers(options.headers||{}); headers.set('Content-Type','application/json'); if(token) headers.set('Authorization',token.startsWith('Bearer ')?token:`Bearer ${token}`); const controller=new AbortController(); const timeout=setTimeout(()=>controller.abort(),30000); try{const res=await fetch(`${API_BASE}${path}`,{...options,headers,signal:controller.signal}); const data=await res.json().catch(()=>({})); if(!res.ok) throw new Error(data?.error?.message||data?.error||'Request failed.'); return data;}finally{clearTimeout(timeout);} }
+      async function upload(files){
+        const total=Array.from(files).reduce((s,f)=>s+f.size,0); if(files.length<1||files.length>20) throw new Error('Choose between 1 and 20 files.'); if(total>2*1024**3) throw new Error('The total upload size cannot exceed 2 GB.');
+        dropZone.hidden=true; renderFiles(files); $('upload-progress').hidden=false; const infos=Array.from(files).map(f=>({fileName:f.name,fileSize:f.size,contentType:f.type||'application/octet-stream'}));
+        const created=await api('/batch',{method:'POST',body:JSON.stringify({files:infos})}); const data=created.data||created; if(!data.transferId||!Array.isArray(data.uploads)) throw new Error('The server returned an incomplete upload plan.');
+        for(let i=0;i<files.length;i++){const file=files[i],info=data.uploads.find(x=>x.fileName===file.name); if(!info) throw new Error(`Upload plan missing ${file.name}.`); const res=await fetch(info.uploadUrl,{method:'PUT',body:file,headers:{'Content-Type':file.type||'application/octet-stream'}}); if(!res.ok) throw new Error(`Upload failed for ${file.name}.`); const pct=Math.round(((i+1)/files.length)*100); $('progress-fill').style.width=`${pct}%`; $('progress-text').textContent=`${pct}%`; $('progress-detail').textContent=`${i+1} of ${files.length} files uploaded`;}
+        await api(`/batch/${encodeURIComponent(data.transferId)}/complete`,{method:'POST',body:'{}'}); const link=`${window.location.origin}/t/${encodeURIComponent(data.transferId)}`; $('share-link').value=link; $('upload-progress').hidden=true; $('upload-result').hidden=false; try{await navigator.clipboard.writeText(link);$('copy-btn').textContent='Copied';setTimeout(()=>$('copy-btn').textContent='Copy link',1800);}catch(_){}}
+      async function handleFiles(files){selectedFiles=Array.from(files||[]);if(!selectedFiles.length)return;try{await upload(selectedFiles);}catch(error){$('upload-progress').hidden=true;$('upload-error').hidden=false;$('error-text').textContent=error.name==='AbortError'?'The request timed out. Please try again.':error.message;}}
+      dropZone.addEventListener('click',()=>fileInput.click()); dropZone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click();}}); dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('dragover');}); dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragover')); dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('dragover');handleFiles(e.dataTransfer.files);}); fileInput.addEventListener('change',()=>handleFiles(fileInput.files));
+      $('copy-btn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('share-link').value);$('copy-btn').textContent='Copied';setTimeout(()=>$('copy-btn').textContent='Copy link',1800);}catch(_){}}); $('new-upload-btn').addEventListener('click',reset); $('retry-btn').addEventListener('click',()=>handleFiles(selectedFiles));
+      $('email-btn').addEventListener('click',async()=>{const to=$('recipient-email').value.trim();if(!to){$('email-status').textContent='Enter a recipient email first.';return;} $('email-btn').disabled=true;$('email-status').textContent='Sending…';try{await api('/send-email',{method:'POST',body:JSON.stringify({to,link:$('share-link').value,fileName:selectedFiles.length>1?'CloudDrop transfer':selectedFiles[0]?.name||'files'})});$('email-status').textContent='Email sent.';}catch(error){$('email-status').textContent=error.message;}finally{$('email-btn').disabled=false;}});
+    })();
   </script>
 </body>
 </html>
