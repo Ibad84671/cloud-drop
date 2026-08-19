@@ -1,74 +1,9 @@
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const crypto = require('crypto');
-
-const ddbDoc = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const s3 = new S3Client({});
-const TABLE = process.env.TABLE_NAME;
-const BUCKET = process.env.UPLOADS_BUCKET;
-
-exports.handler = async (event) => {
-  try {
-    const body = JSON.parse(event.body);
-    const files = body.files || [];
-    if (!files.length) return { statusCode: 400, body: JSON.stringify({ error: 'No files' }) };
-
-    const transferId = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const ttl = Math.floor(expiresAt.getTime() / 1000);
-    const ownerId = event.requestContext?.authorizer?.claims?.sub || 'guest';
-
-    const fileItems = files.map(f => ({
-      fileName: f.fileName,
-      fileSize: f.fileSize,
-      contentType: f.contentType,
-      objectKey: `uploads/${transferId}/${f.fileName}`
-    }));
-
-    await ddbDoc.send(new PutCommand({
-      TableName: TABLE,
-      Item: {
-        transferId, ownerId, status: 'pending',
-        createdAt: new Date().toISOString(),
-        expiresAt: expiresAt.toISOString(),
-        ttl,
-        files: fileItems,
-        isBatch: true,
-        downloadCount: 0
-      }
-    }));
-
-    const presignedUrls = await Promise.all(fileItems.map(async (item) => {
-      const command = new PutObjectCommand({
-        Bucket: BUCKET,
-        Key: item.objectKey,
-        ContentType: item.contentType
-      });
-      const url = await getSignedUrl(s3, command, { expiresIn: 900 });
-      return { fileName: item.fileName, uploadUrl: url };
-    }));
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
-      },
-      body: JSON.stringify({ transferId, uploads: presignedUrls })
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
-      },
-      body: JSON.stringify({ error: error.message })
-    };
-  }
-};
+const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
+const {DynamoDBDocumentClient,PutCommand}=require('@aws-sdk/lib-dynamodb');
+const {S3Client,PutObjectCommand}=require('@aws-sdk/client-s3');
+const {getSignedUrl}=require('@aws-sdk/s3-request-presigner');
+const crypto=require('crypto');
+const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({}));const s3=new S3Client({});
+const MAX_FILES=50,MAX_TOTAL=2*1024*1024*1024,MAX_FILE=2*1024*1024*1024;
+const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization'};const out=(status,body)=>({statusCode:status,headers:{...cors,'Content-Type':'application/json'},body:JSON.stringify(body)});
+exports.handler=async event=>{try{if(event.httpMethod==='OPTIONS')return out(204,'');const files=JSON.parse(event.body||'{}').files;if(!Array.isArray(files)||files.length<1||files.length>MAX_FILES)return out(400,{error:`Upload between 1 and ${MAX_FILES} files`});const normalized=[];let total=0;const names=new Set();for(const f of files){const fileName=String(f?.fileName||'').trim();const fileSize=Number(f?.fileSize);const contentType=String(f?.contentType||'application/octet-stream').slice(0,200);if(!fileName||fileName.length>255||names.has(fileName)||!Number.isSafeInteger(fileSize)||fileSize<1||fileSize>MAX_FILE)return out(400,{error:'Invalid or duplicate file metadata'});total+=fileSize;if(total>MAX_TOTAL)return out(400,{error:'Total upload size exceeds 2GB'});names.add(fileName);normalized.push({fileName,fileSize,contentType,objectKey:`uploads/${crypto.randomUUID()}/${crypto.randomUUID()}`});}const transferId=crypto.randomUUID();const expiresAt=new Date(Date.now()+7*86400000);await ddb.send(new PutCommand({TableName:process.env.TABLE_NAME,Item:{transferId,ownerId:event.requestContext?.authorizer?.claims?.sub||'guest',status:'pending',createdAt:new Date().toISOString(),expiresAt:expiresAt.toISOString(),ttl:Math.floor(expiresAt.getTime()/1000),files:normalized,isBatch:true,totalInputSize:total,downloadCount:0}}));const uploads=await Promise.all(normalized.map(async item=>({fileName:item.fileName,uploadUrl:await getSignedUrl(s3,new PutObjectCommand({Bucket:process.env.UPLOADS_BUCKET,Key:item.objectKey,ContentType:item.contentType}),{expiresIn:900})})));return out(200,{transferId,uploads});}catch(error){console.error('batch-create',error);return out(500,{error:'Internal server error'});}};
