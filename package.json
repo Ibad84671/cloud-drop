@@ -2,7 +2,9 @@
   "name": "cloud-drop",
   "version": "1.0.0",
   "private": true,
+  "description": "Fast, private, serverless file sharing on AWS",
   "scripts": {
+    "test": "node tests/smoke.test.js",
     "deploy": "./scripts/deploy.sh",
     "destroy": "./scripts/destroy.sh"
   },
