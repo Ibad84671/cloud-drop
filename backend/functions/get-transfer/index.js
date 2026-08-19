@@ -1,164 +1,45 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const {
-  DynamoDBDocumentClient,
-  GetCommand,
-  UpdateCommand
-} = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
-const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3Client = new S3Client({});
-
 const TABLE_NAME = process.env.TABLE_NAME;
 const BUCKET = process.env.UPLOADS_BUCKET;
+const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,Authorization', 'Content-Type': 'application/json' };
+const response = (statusCode, body) => ({ statusCode, headers, body: JSON.stringify(body) });
+const safeFileName = name => String(name || 'download').replace(/[\r\n"\\/]/g, '_').slice(0, 180) || 'download';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization'
-};
-
-function response(statusCode, body) {
-  return {
-    statusCode,
-    headers: {
-      ...CORS_HEADERS,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  };
-}
-
-exports.handler = async (event) => {
+exports.handler = async event => {
+  if (event?.requestContext?.http?.method === 'OPTIONS') return response(204, null);
   try {
-    console.log('GET TRANSFER EVENT:', JSON.stringify(event));
-
     const transferId = event?.pathParameters?.id;
+    if (!transferId || !/^[0-9a-f-]{36}$/i.test(transferId)) return response(400, { success: false, error: { code: 'INVALID_TRANSFER_ID', message: 'Invalid transfer ID.' } });
+    const item = (await docClient.send(new GetCommand({ TableName: TABLE_NAME, Key: { transferId } }))).Item;
+    if (!item) return response(404, { success: false, error: { code: 'TRANSFER_NOT_FOUND', message: 'Transfer not found.' } });
+    if (item.expiresAt && Date.parse(item.expiresAt) <= Date.now()) return response(410, { success: false, error: { code: 'TRANSFER_EXPIRED', message: 'Transfer expired.' } });
+    if (item.status !== 'ready') return response(409, { success: false, error: { code: 'TRANSFER_NOT_READY', message: 'This transfer is not ready for download.' } });
 
-    if (!transferId) {
-      return response(400, {
-        error: 'Missing transfer ID'
-      });
-    }
-
-    const result = await docClient.send(
-      new GetCommand({
-        TableName: TABLE_NAME,
-        Key: {
-          transferId
-        }
-      })
-    );
-
-    const item = result.Item;
-
-    if (!item) {
-      return response(404, {
-        error: 'Transfer not found',
-        transferId
-      });
-    }
-
-    if (item.status !== 'ready') {
-      return response(400, {
-        error: 'Upload not complete yet',
-        status: item.status
-      });
-    }
-
-    if (item.expiresAt && new Date(item.expiresAt) < new Date()) {
-      return response(410, {
-        error: 'Transfer expired'
-      });
-    }
-
-    let downloadUrl;
+    let key;
+    let fileName;
+    let fileSize = item.fileSize || item.totalSize || 0;
     let fileCount = 1;
-    let totalSize = item.totalSize || 0;
-    let zipFileName = 'archive.zip';
-
-    /*
-     * Batch transfer
-     */
     if (item.isBatch && item.zipKey) {
-      const command = new GetObjectCommand({
-        Bucket: BUCKET,
-        Key: item.zipKey,
-        ResponseContentDisposition:
-          `attachment; filename="${item.zipKey.split('/').pop()}"`
-      });
-
-      downloadUrl = await getSignedUrl(
-        s3Client,
-        command,
-        { expiresIn: 300 }
-      );
-
-      fileCount = (item.files || []).length;
-      zipFileName = item.zipKey.split('/').pop();
+      key = item.zipKey;
+      fileName = safeFileName(item.zipKey.split('/').pop());
+      fileCount = Array.isArray(item.files) ? item.files.length : 0;
+    } else {
+      key = item.objectKey;
+      fileName = safeFileName(item.originalFileName);
     }
+    if (!key || !key.startsWith(item.isBatch ? `zips/${transferId}` : 'uploads/')) return response(500, { success: false, error: { code: 'INVALID_STORAGE_REFERENCE', message: 'Transfer storage metadata is invalid.' } });
 
-    /*
-     * Single-file transfer
-     */
-    else {
-      if (!item.objectKey) {
-        return response(500, {
-          error: 'Transfer metadata is missing objectKey'
-        });
-      }
-
-      const command = new GetObjectCommand({
-        Bucket: BUCKET,
-        Key: item.objectKey,
-        ResponseContentDisposition:
-          `attachment; filename="${item.originalFileName || 'download'}"`
-      });
-
-      downloadUrl = await getSignedUrl(
-        s3Client,
-        command,
-        { expiresIn: 300 }
-      );
-
-      totalSize = item.fileSize || 0;
-      zipFileName = item.originalFileName || 'download';
-    }
-
-    /*
-     * Increment download counter.
-     * Do not block the actual download if this fails.
-     */
-    docClient.send(
-      new UpdateCommand({
-        TableName: TABLE_NAME,
-        Key: { transferId },
-        UpdateExpression: 'ADD downloadCount :inc',
-        ExpressionAttributeValues: {
-          ':inc': 1
-        }
-      })
-    ).catch((err) => {
-      console.error('Download counter update failed:', err);
-    });
-
-    return response(200, {
-      downloadUrl,
-      fileName: zipFileName,
-      fileSize: totalSize,
-      fileCount,
-      totalSize,
-      zipFileName
-    });
-
+    const downloadUrl = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: BUCKET, Key: key, ResponseContentDisposition: `attachment; filename="${fileName}"` }), { expiresIn: 300 });
+    docClient.send(new UpdateCommand({ TableName: TABLE_NAME, Key: { transferId }, UpdateExpression: 'ADD downloadCount :inc', ExpressionAttributeValues: { ':inc': 1 } })).catch(error => console.error('download counter update failed', { name: error.name }));
+    return response(200, { success: true, data: { downloadUrl, fileName, fileSize, fileCount, expiresAt: item.expiresAt } });
   } catch (error) {
-    console.error('GET TRANSFER ERROR:', error);
-
-    return response(500, {
-      error: 'Internal server error',
-      message: error.message
-    });
+    console.error('get-transfer failed', { name: error.name });
+    return response(500, { success: false, error: { code: 'INTERNAL_ERROR', message: 'Unable to prepare download.' } });
   }
 };
