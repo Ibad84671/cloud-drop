@@ -1,33 +1,6 @@
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-
-const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
-const TABLE_NAME = process.env.TABLE_NAME;
-
-exports.handler = async (event) => {
-  try {
-    const transferId = event.pathParameters.id;
-
-    await docClient.send(new UpdateCommand({
-      TableName: TABLE_NAME,
-      Key: { transferId },
-      UpdateExpression: 'SET #status = :ready',
-      ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: { ':ready': 'ready' }
-    }));
-
-    return {
-      statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ message: 'Upload completed successfully' })
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ error: error.message })
-    };
-  }
-};
+const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
+const {DynamoDBDocumentClient,GetCommand,UpdateCommand}=require('@aws-sdk/lib-dynamodb');
+const {S3Client,HeadObjectCommand}=require('@aws-sdk/client-s3');
+const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({}));const s3=new S3Client({});
+const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization'};const out=(status,body)=>({statusCode:status,headers:{...cors,'Content-Type':'application/json'},body:JSON.stringify(body)});
+exports.handler=async event=>{try{if(event.httpMethod==='OPTIONS')return out(204,'');const transferId=event.pathParameters?.id;if(!transferId)return out(400,{error:'Missing transfer ID'});const result=await ddb.send(new GetCommand({TableName:process.env.TABLE_NAME,Key:{transferId}}));const item=result.Item;if(!item)return out(404,{error:'Transfer not found'});if(item.status!=='pending')return out(409,{error:'Transfer is already completed'});await s3.send(new HeadObjectCommand({Bucket:process.env.UPLOADS_BUCKET,Key:item.objectKey}));await ddb.send(new UpdateCommand({TableName:process.env.TABLE_NAME,Key:{transferId},UpdateExpression:'SET #status=:ready',ConditionExpression:'#status=:pending',ExpressionAttributeNames:{'#status':'status'},ExpressionAttributeValues:{':ready':'ready',':pending':'pending'}}));return out(200,{message:'Upload completed successfully'});}catch(error){console.error('complete-upload',error);return out(error.name==='NotFound'?400:500,{error:error.name==='NotFound'?'Uploaded object not found':'Internal server error'});}};
