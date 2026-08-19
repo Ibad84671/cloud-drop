@@ -32,35 +32,33 @@
   </main>
   <script src="/js/theme.js"></script>
   <script>
-<<<<<<< HEAD
     const API_BASE = 'https://23pm2zjtw8.execute-api.us-east-1.amazonaws.com/prod';
-=======
-    // ✅ CORRECT API URL for the new API Gateway
-    const API_BASE = 'https://zsiiwyicn3.execute-api.us-east-1.amazonaws.com/prod';
->>>>>>> 8779baac422899ac4ecc705b9cd116945b48a3b2
     const transferId = window.location.pathname.split('/').pop();
 
     async function loadTransfer() {
       try {
-        const res = await fetch(`${API_BASE}/transfer/${transferId}`);
+        if (!transferId) throw new Error('Transfer not found');
+        const res = await fetch(`${API_BASE}/transfer/${encodeURIComponent(transferId)}`);
         if (!res.ok) {
           if (res.status === 404) throw new Error('Transfer not found');
           if (res.status === 410) throw new Error('This transfer has expired');
-          throw new Error('Failed to load');
+          if (res.status === 400) throw new Error('This transfer is not ready yet');
+          throw new Error('Failed to load transfer');
         }
         const data = await res.json();
+        if (!data.downloadUrl) throw new Error('Download is currently unavailable');
         document.getElementById('file-info').textContent = `Ready to download ${data.fileCount || 1} files as ZIP`;
         document.getElementById('file-name').textContent = data.zipFileName || 'archive.zip';
         const sizeMB = ((data.totalSize || 0) / 1024 / 1024).toFixed(2);
         document.getElementById('file-size').textContent = `${sizeMB} MB (ZIP)`;
-        document.getElementById('expiry').textContent = '🔒 Secure download link';
+        document.getElementById('expiry').textContent = '🔒 Secure, time-limited download';
         document.getElementById('download-btn').onclick = () => {
           window.location.href = data.downloadUrl;
         };
-        document.getElementById('download-content').style.display = 'block';
       } catch (err) {
-        document.getElementById('file-info').textContent = '❌ Error';
+        document.getElementById('file-info').textContent = '❌ Unable to load transfer';
         document.getElementById('error-message').textContent = err.message;
+        document.getElementById('download-content').style.display = 'none';
         document.getElementById('error-content').style.display = 'block';
         console.error('Download error:', err);
       }
