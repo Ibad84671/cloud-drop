@@ -260,10 +260,9 @@ cloud-drop/
 ├── infrastructure/cfn/main.yaml
 ├── scripts/deploy.sh
 ├── scripts/destroy.sh
-├── cloudfront-function.js
 ├── cors.json
-├── deploy-lambdas.bat
-├── setup.sh
+├── package.json
+├── tests/smoke.test.js
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
 ├── LICENSE.txt
@@ -296,23 +295,7 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_IAM
 ```
 
-Then sync the frontend:
-
-```bash
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-aws s3 sync frontend/ "s3://clouddrop-frontend-dev-${ACCOUNT_ID}" --delete
-```
-
-Invalidate CloudFront after frontend changes:
-
-```bash
-DIST_ID=$(aws cloudformation describe-stack-resource \
-  --stack-name clouddrop-dev \
-  --logical-resource-id CloudFrontDistribution \
-  --query StackResourceDetail.PhysicalResourceId \
-  --output text)
-aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
-```
+For the complete deployment flow, prefer `scripts/deploy.sh`; it also generates the environment-specific frontend configuration.
 
 ### GitHub Actions
 
@@ -324,7 +307,7 @@ AWS_DEPLOY_ROLE_ARN
 
 The AWS role should trust the GitHub Actions OIDC provider and be limited to the resources/actions required by the deployment process.
 
-The workflow also generates `frontend/js/config.js` from the deployed `ApiGatewayURL`, so environment-specific API URLs do not need to be committed.
+The workflow generates `frontend/js/config.js` from CloudFormation outputs, so environment-specific API and Cognito identifiers do not need to be committed.
 
 ---
 
@@ -333,16 +316,19 @@ The workflow also generates `frontend/js/config.js` from the deployed `ApiGatewa
 CI performs:
 
 - JavaScript syntax checks with `node --check`.
+- Repository smoke tests.
 - Merge-conflict marker detection.
 - CloudFormation linting with `cfn-lint`.
-- AWS CloudFormation template validation.
+- AWS CloudFormation template validation during deployment.
 - Deployment only after validation succeeds.
 
-Useful local command:
+Useful local commands:
 
 ```bash
-aws cloudformation validate-template \
-  --template-body file://infrastructure/cfn/main.yaml
+npm test
+python -m pip install cfn-lint
+cfn-lint infrastructure/cfn/main.yaml
+aws cloudformation validate-template --template-body file://infrastructure/cfn/main.yaml
 ```
 
 Core manual acceptance flow:
@@ -376,23 +362,13 @@ Core services are pay-per-use/serverless:
 
 No NAT Gateway, RDS, ECS, EKS, ElastiCache or always-on application server is required.
 
-There is intentionally no fixed "\$0.10/month" promise: real cost depends on storage, data transfer, API calls, CloudFront requests, Lambda execution, DynamoDB usage and email volume.
+There is intentionally no fixed monthly-cost promise: real cost depends on storage, data transfer, API calls, CloudFront requests, Lambda execution, DynamoDB usage and email volume.
 
 ---
 
 ## 🧭 Architecture decisions
 
-See [`docs/adr/`](docs/adr/) for the project's recorded architectural decisions, including:
-
-- S3 object storage.
-- Direct browser-to-S3 uploads.
-- DynamoDB instead of RDS.
-- Lambda instead of EC2.
-- CloudFront delivery.
-- Optional Cognito authentication.
-- No NAT Gateway.
-- Serverless cost model.
-- Cleanup/lifecycle strategy.
+See [`docs/adr/`](docs/adr/) for the project's recorded architectural decisions, including S3 object storage, direct browser-to-S3 uploads, DynamoDB instead of RDS, Lambda instead of EC2, CloudFront delivery, optional Cognito authentication, no NAT Gateway, the serverless cost model and native lifecycle cleanup.
 
 ---
 
@@ -416,11 +392,7 @@ These are operational controls; they do not require adding expensive infrastruct
 
 ## 🤝 Contributing
 
-Please read:
-
-- [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
-- [`SECURITY.md`](SECURITY.md)
+Please read [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) and [`SECURITY.md`](SECURITY.md).
 
 Keep changes focused, preserve guest sharing, avoid unnecessary dependencies/services, and never commit credentials or environment secrets.
 
