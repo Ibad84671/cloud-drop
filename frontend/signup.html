@@ -14,11 +14,11 @@
 
     <label for="password">Create password</label>
     <div class="password-wrap">
-      <input id="password" type="password" autocomplete="new-password" required minlength="12" placeholder="Create a strong password" aria-describedby="password-help">
+      <input id="password" type="password" autocomplete="new-password" required minlength="8" placeholder="Create a strong password" aria-describedby="password-help">
       <button id="password-toggle" class="password-toggle" type="button" aria-label="Show password">Show</button>
     </div>
     <div id="password-help" class="password-rules" aria-live="polite">
-      <div class="password-rule" data-rule="length">At least 12 characters</div>
+      <div class="password-rule" data-rule="length">At least 8 characters</div>
       <div class="password-rule" data-rule="upper">One uppercase letter</div>
       <div class="password-rule" data-rule="lower">One lowercase letter</div>
       <div class="password-rule" data-rule="number">One number</div>
@@ -45,8 +45,8 @@
   const c=window.CLOUDDROP_CONFIG||{};const region=c.region||'us-east-1';const clientId=c.cognitoClientId;const endpoint=`https://cognito-idp.${region}.amazonaws.com/`;let username='';
   const $=id=>document.getElementById(id);const message=(text,type='')=>{$('message').textContent=text;$('message').className=`auth-status ${type}`;};
   async function call(action,payload){if(!clientId)throw new Error('Authentication is not configured for this deployment.');const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':`AWSCognitoIdentityProviderService.${action}`},body:JSON.stringify(payload)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||'Authentication request failed.');return d;}
-  function rules(password){return{length:password.length>=12,upper:/[A-Z]/.test(password),lower:/[a-z]/.test(password),number:/\d/.test(password),symbol:/[^A-Za-z0-9]/.test(password)};}
-  function renderRules(){const r=rules($('password').value);Object.entries(r).forEach(([k,v])=>$(`[data-rule="${k}"]`).classList.toggle('valid',v));return Object.values(r).every(Boolean);}
+  function rules(password){return{length:password.length>=8,upper:/[A-Z]/.test(password),lower:/[a-z]/.test(password),number:/\d/.test(password),symbol:/[^A-Za-z0-9]/.test(password)};}
+  function renderRules(){const r=rules($('password').value);Object.entries(r).forEach(([k,v])=>{const el=document.querySelector('[data-rule="'+k+'"]');if(el){el.classList.toggle('valid',v);el.classList.toggle('invalid',!v);}});return Object.values(r).every(Boolean);}
   $('password').addEventListener('input',renderRules);
   $('password-toggle').addEventListener('click',()=>{const input=$('password');const visible=input.type==='text';input.type=visible?'password':'text';$('password-toggle').textContent=visible?'Show':'Hide';$('password-toggle').setAttribute('aria-label',visible?'Show password':'Hide password');});
   $('signup-form').addEventListener('submit',async e=>{e.preventDefault();const email=$('email').value.trim();const password=$('password').value;if(!email){message('Enter your email address.','error');$('email').focus();return;}if(!renderRules()){message('Complete all password requirements before continuing.','error');$('password').focus();return;}$('signup-btn').disabled=true;message('Creating your secure account…');try{await call('SignUp',{ClientId:clientId,Username:email,Password:password,UserAttributes:[{Name:'email',Value:email}]});username=email;$('signup-form').hidden=true;$('otp-section').hidden=false;message('Verification code sent. Check your inbox.','success');$('otp').focus();}catch(x){message(x.message,'error');}finally{$('signup-btn').disabled=false;}});
