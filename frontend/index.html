@@ -46,7 +46,11 @@
   </main>
   <script src="/js/theme.js"></script>
   <script>
+<<<<<<< HEAD
     const API_BASE = 'https://23pm2zjtw8.execute-api.us-east-1.amazonaws.com/prod';
+=======
+    const API_BASE = 'https://zsiiwyicn3.execute-api.us-east-1.amazonaws.com/prod';
+>>>>>>> 8779baac422899ac4ecc705b9cd116945b48a3b2
     const token = localStorage.getItem('accessToken') || localStorage.getItem('idToken');
     const statusEl = document.getElementById('user-status');
     const authBtn = document.getElementById('auth-btn');
@@ -84,10 +88,40 @@
       const input = document.getElementById('share-link');
       copyLinkToClipboard(input.value);
     });
-    document.getElementById('email-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      alert('✉️ Email sharing coming soon!');
+
+    document.getElementById('email-btn')?.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const email = document.getElementById('recipient-email').value.trim();
+  const link = document.getElementById('share-link').value;
+  const fileName = 'files.zip';
+
+  if (!email) {
+    alert('Please enter a recipient email.');
+    return;
+  }
+  if (!link) {
+    alert('No file to send. Please upload first.');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/send-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: email, link, fileName })
     });
+    if (res.ok) {
+      alert('✅ Email sent successfully!');
+    } else {
+      const error = await res.json();
+      alert('❌ Email failed: ' + (error.error || 'Unknown error') + '\nPlease use Copy Link instead.');
+    }
+  } catch (err) {
+    alert('❌ Email sending failed. Please use Copy Link.');
+    console.error(err);
+  }
+});
+
     document.getElementById('new-upload-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
       resetUpload();
@@ -157,7 +191,7 @@
         updateProgress(100);
         document.getElementById('upload-progress').style.display = 'none';
         document.getElementById('upload-result').style.display = 'block';
-        const shareLink = `${window.location.origin}/t/${transferId}`;
+        const shareLink = `${window.location.origin}/t/${data.transferId}`;
         document.getElementById('share-link').value = shareLink;
         try { await navigator.clipboard.writeText(shareLink); } catch(e) {}
       } catch (err) {
