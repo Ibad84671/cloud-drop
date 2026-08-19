@@ -24,33 +24,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Check merge-conflict markers
-        shell: bash
         run: |
-          if grep -RInE '^(<<<<<<<|=======|>>>>>>>)' --exclude-dir=.git .; then
-            echo 'Merge-conflict markers found.'
-            exit 1
-          fi
-
+          if grep -RInE '^(<<<<<<<|=======|>>>>>>>)' --exclude-dir=.git .; then exit 1; fi
       - name: Validate JavaScript
         shell: bash
         run: |
           set -euo pipefail
-          find backend/functions frontend -type f -name '*.js' -print0 | while IFS= read -r -d '' file; do
-            node --check "$file"
-          done
-
+          find backend/functions frontend -type f -name '*.js' -print0 | while IFS= read -r -d '' file; do node --check "$file"; done
       - name: Validate CloudFormation syntax
         run: |
           python -m pip install --disable-pip-version-check cfn-lint
           cfn-lint infrastructure/cfn/main.yaml
-
       - name: Validate CloudFormation template
-        run: |
-          aws cloudformation validate-template \
-            --template-body file://infrastructure/cfn/main.yaml \
-            --region "$AWS_REGION"
+        run: aws cloudformation validate-template --template-body file://infrastructure/cfn/main.yaml --region "$AWS_REGION"
 
   deploy:
     name: Deploy
@@ -63,33 +50,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Deploy CloudFormation
         run: |
-          aws cloudformation deploy \
-            --template-file infrastructure/cfn/main.yaml \
-            --stack-name "$STACK_NAME" \
-            --parameter-overrides Environment=dev \
-            --capabilities CAPABILITY_IAM
-
+          aws cloudformation deploy --template-file infrastructure/cfn/main.yaml --stack-name "$STACK_NAME" --parameter-overrides Environment=dev --capabilities CAPABILITY_IAM
+      - name: Generate deployment config
+        run: |
+          API_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayURL`].OutputValue' --output text)
+          test -n "$API_URL" && test "$API_URL" != "None"
+          printf 'window.CLOUDDROP_CONFIG = { apiBase: "%s" };\n' "$API_URL" > frontend/js/config.js
       - name: Sync frontend
         run: |
-          BUCKET=$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucketName`].OutputValue' \
-            --output text)
+          BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucketName`].OutputValue' --output text)
+          test -n "$BUCKET" && test "$BUCKET" != "None"
           aws s3 sync frontend/ "s3://$BUCKET" --delete
-
       - name: Invalidate CloudFront
         run: |
-          DIST_ID=$(aws cloudformation describe-stacks \
-            --stack-name "$STACK_NAME" \
-            --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' \
-            --output text)
+          DIST_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' --output text)
+          test -n "$DIST_ID" && test "$DIST_ID" != "None"
           aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
