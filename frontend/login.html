@@ -1,12 +1,43 @@
 <!doctype html>
 <html lang="en" data-theme="dark">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Sign in to manage your CloudDrop transfers"><title>Log in — CloudDrop</title><link rel="stylesheet" href="/css/style.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Securely sign in to manage your CloudDrop transfers"><title>Sign in — CloudDrop</title><link rel="stylesheet" href="/css/style.css"></head>
 <body>
 <header class="site-header"><a class="brand" href="/" aria-label="CloudDrop home"><span class="brand-mark">C</span><span>CloudDrop</span></a><button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme">◐</button></header>
-<main class="container page-shell"><section class="auth-container" style="background:var(--surface);border-color:var(--line);box-shadow:var(--shadow)"><span class="eyebrow">OPTIONAL ACCOUNT</span><h2>Welcome back.</h2><p style="color:var(--muted);text-align:center;margin-bottom:20px">Sign in to manage transfers. Guest sharing still works without an account.</p><button id="login-btn" class="btn btn-primary" style="width:100%" type="button">Continue with CloudDrop</button><p id="message" role="status" style="text-align:center;margin-top:16px;color:var(--muted);font-size:13px"></p><p style="text-align:center;margin-top:16px;color:var(--muted);font-size:13px">New here? <a href="/signup.html" style="color:var(--accent)">Create an account</a></p></section></main>
+<main class="container page-shell"><section class="auth-container" style="background:var(--surface);box-shadow:var(--shadow)">
+  <span class="eyebrow">SECURE SIGN IN</span>
+  <h2>Welcome back</h2>
+  <p style="color:var(--muted);text-align:center">Sign in to manage your CloudDrop transfers. You can still send and receive files without an account.</p>
+  <div style="display:grid;gap:10px;margin-top:24px">
+    <button id="login-btn" class="btn btn-primary" style="width:100%;min-height:46px" type="button">Continue securely</button>
+    <p class="auth-note" style="text-align:center">You’ll be redirected to Amazon Cognito for secure authentication.</p>
+  </div>
+  <div id="message" class="auth-status" role="status" aria-live="polite"></div>
+  <div class="auth-error-actions" hidden><button id="retry-btn" class="btn btn-secondary" type="button">Try sign in again</button></div>
+  <p class="auth-links">New to CloudDrop? <a href="/signup.html">Create an account</a></p>
+</section></main>
 <script src="/js/config.js"></script><script src="/js/theme.js"></script>
 <script>
-(()=>{ 'use strict'; const c=window.CLOUDDROP_CONFIG||{}; const $=id=>document.getElementById(id); function verifier(){const b=new Uint8Array(32);crypto.getRandomValues(b);return btoa(String.fromCharCode(...b)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');} async function start(){if(!c.cognitoDomain||!c.cognitoClientId)throw new Error('Authentication is not configured for this deployment.');const v=verifier();const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));const challenge=btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');sessionStorage.setItem('cloudDropPkceVerifier',v);const p=new URLSearchParams({client_id:c.cognitoClientId,response_type:'code',scope:'openid email profile',redirect_uri:`${location.origin}/auth-callback.html`,code_challenge_method:'S256',code_challenge:challenge});location.href=`https://${c.cognitoDomain}/oauth2/authorize?${p}`;} $('login-btn').addEventListener('click',async()=>{$('login-btn').disabled=true;$('message').textContent='Opening secure sign-in…';try{await start();}catch(e){$('message').textContent=e.message;$('login-btn').disabled=false;}});})();
+(()=>{
+  'use strict';
+  const c=window.CLOUDDROP_CONFIG||{};const $=id=>document.getElementById(id);
+  function base64url(bytes){return btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');}
+  function verifier(){const b=new Uint8Array(32);crypto.getRandomValues(b);return base64url(b);}
+  function state(){const b=new Uint8Array(24);crypto.getRandomValues(b);return base64url(b);}
+  function showError(text){$('message').textContent=text;$('message').className='auth-status error';$('login-btn').disabled=false;$('login-btn').textContent='Continue securely';$('.auth-error-actions').hidden=false;}
+  async function start(){
+    if(!c.cognitoDomain||!c.cognitoClientId)throw new Error('Authentication is not configured for this deployment.');
+    const v=verifier();const s=state();
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));const challenge=base64url(new Uint8Array(digest));
+    sessionStorage.setItem('cloudDropPkceVerifier',v);sessionStorage.setItem('cloudDropOAuthState',s);
+    const p=new URLSearchParams({client_id:c.cognitoClientId,response_type:'code',scope:'openid email profile',redirect_uri:`${location.origin}/auth-callback.html`,code_challenge_method:'S256',code_challenge:challenge,state:s});
+    location.href=`https://${c.cognitoDomain}/oauth2/authorize?${p}`;
+  }
+  async function begin(){
+    $('login-btn').disabled=true;$('login-btn').textContent='Opening secure sign in…';$('message').textContent='';$('message').className='auth-status';$('.auth-error-actions').hidden=true;
+    try{await start();}catch(e){showError(e.message);}
+  }
+  $('login-btn').addEventListener('click',begin);$('retry-btn').addEventListener('click',begin);
+})();
 </script>
 </body>
 </html>
