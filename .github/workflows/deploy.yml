@@ -1,47 +1,112 @@
-name: Deploy CloudDrop
+name: CloudDrop CI/CD
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   validate:
+    name: Validate infrastructure and Lambda source
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Lint Frontend
-      run: echo "Linting..."
-    - name: Validate CloudFormation
-      run: |
-        aws cloudformation validate-template --template-body file://infrastructure/cfn/main.yaml
-      env:
-        AWS_DEFAULT_REGION: us-east-1
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install CloudFormation linter
+        run: python -m pip install --disable-pip-version-check cfn-lint
+
+      - name: Lint CloudFormation
+        run: |
+          cfn-lint infrastructure/cfn/bootstrap.yaml
+          cfn-lint infrastructure/cfn/main.yaml
+
+      - name: Check Lambda JavaScript
+        run: node scripts/validate-lambdas.js
 
   deploy:
+    name: Deploy to AWS
     needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
     steps:
-    - uses: actions/checkout@v3
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
-    - name: Deploy CloudFormation
-      run: |
-        aws cloudformation deploy \
-          --template-file infrastructure/cfn/main.yaml \
-          --stack-name clouddrop-dev \
-          --parameter-overrides Environment=dev \
-          --capabilities CAPABILITY_IAM
-    - name: Sync Frontend
-      run: |
-        aws s3 sync frontend/ s3://clouddrop-frontend-dev-$(aws sts get-caller-identity --query Account --output text) --delete
-    - name: Invalidate CloudFront
-      run: |
-        DIST_ID=$(aws cloudformation describe-stack-resource --stack-name clouddrop-dev --logical-resource-id CloudFrontDistribution --query StackResourceDetail.PhysicalResourceId --output text)
-        aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
+          role-session-name: CloudDropGitHubActions
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Bootstrap artifact bucket
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ARTIFACT_BUCKET="clouddrop-artifacts-${ACCOUNT_ID}"
+          aws cloudformation deploy \
+            --template-file infrastructure/cfn/bootstrap.yaml \
+            --stack-name clouddrop-bootstrap \
+            --parameter-overrides ArtifactBucketName="$ARTIFACT_BUCKET"
+          echo "ARTIFACT_BUCKET=$ARTIFACT_BUCKET" >> "$GITHUB_ENV"
+
+      - name: Package Lambda functions
+        env:
+          VERSION: ${{ github.sha }}
+        run: |
+          rm -rf .artifacts
+          mkdir -p .artifacts
+          for dir in backend/functions/*; do
+            [ -f "$dir/index.js" ] || continue
+            name=$(basename "$dir")
+            (cd "$dir" && zip -q -j "../../../.artifacts/${name}-${VERSION}.zip" index.js)
+          done
+
+      - name: Upload Lambda artifacts
+        run: aws s3 sync .artifacts/ "s3://$ARTIFACT_BUCKET/lambdas/" --only-show-errors
+
+      - name: Deploy application stack
+        env:
+          SES_FROM_EMAIL: ${{ secrets.SES_FROM_EMAIL }}
+          VERSION: ${{ github.sha }}
+        run: |
+          aws cloudformation deploy \
+            --template-file infrastructure/cfn/main.yaml \
+            --stack-name clouddrop-dev \
+            --parameter-overrides Environment=dev ArtifactBucketName="$ARTIFACT_BUCKET" CodeVersion="$VERSION" SesFromEmail="$SES_FROM_EMAIL" \
+            --capabilities CAPABILITY_IAM
+
+      - name: Generate deployment configuration
+        run: |
+          API_BASE=$(aws cloudformation describe-stacks --stack-name clouddrop-dev --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayURL'].OutputValue" --output text)
+          REGION=$(aws configure get region)
+          USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name clouddrop-dev --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
+          CLIENT_ID=$(aws cloudformation describe-stacks --stack-name clouddrop-dev --query "Stacks[0].Outputs[?OutputKey=='CognitoClientId'].OutputValue" --output text)
+          cat > frontend/js/config.js <<EOF
+          window.CLOUDDROP_CONFIG = {
+            apiBase: '${API_BASE}',
+            region: '${REGION}',
+            userPoolId: '${USER_POOL_ID}',
+            clientId: '${CLIENT_ID}'
+          };
+          EOF
+
+      - name: Publish frontend
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks --stack-name clouddrop-dev --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue" --output text)
+          DIST_ID=$(aws cloudformation describe-stack-resource --stack-name clouddrop-dev --logical-resource-id CloudFrontDistribution --query StackResourceDetail.PhysicalResourceId --output text)
+          aws s3 sync frontend/ "s3://$BUCKET" --delete
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
+
+      - name: Print deployment URL
+        run: aws cloudformation describe-stacks --stack-name clouddrop-dev --query "Stacks[0].Outputs[?OutputKey=='CloudFrontURL'].OutputValue" --output text
