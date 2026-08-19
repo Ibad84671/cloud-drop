@@ -65,11 +65,11 @@ jobs:
           printf 'window.CLOUDDROP_CONFIG = { apiBase: "%s" };\n' "$API_URL" > frontend/js/config.js
       - name: Sync frontend
         run: |
-          BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucketName`].OutputValue' --output text)
-          test -n "$BUCKET" && test "$BUCKET" != "None"
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET="clouddrop-frontend-dev-${ACCOUNT_ID}"
           aws s3 sync frontend/ "s3://$BUCKET" --delete
       - name: Invalidate CloudFront
         run: |
-          DIST_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' --output text)
+          DIST_ID=$(aws cloudformation describe-stack-resource --stack-name "$STACK_NAME" --logical-resource-id CloudFrontDistribution --query StackResourceDetail.PhysicalResourceId --output text)
           test -n "$DIST_ID" && test "$DIST_ID" != "None"
           aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
