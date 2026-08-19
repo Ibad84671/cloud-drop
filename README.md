@@ -143,7 +143,7 @@ The GitHub Actions workflow also generates the runtime frontend configuration fr
 
 ## Runtime and testing
 
-Lambda uses the supported Node.js 24 runtime. AWS currently lists Node.js 24 as supported through April 30, 2028. citeturn9search0
+Lambda uses the supported Node.js 24 runtime. AWS currently lists Node.js 24 as supported through April 30, 2028.
 
 CI checks:
 
