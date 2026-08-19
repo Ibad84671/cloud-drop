@@ -1,69 +1,35 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
+<!doctype html>
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Download — CloudDrop</title>
-  <link rel="stylesheet" href="/css/style.css" />
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="CloudDrop secure file transfer download">
+  <title>Transfer — CloudDrop</title>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <header>
-    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
-    <nav><div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div></nav>
-  </header>
-  <main class="container">
-    <section class="hero">
-      <h1>📥 Download Your Files</h1>
-      <p id="file-info">Loading...</p>
-    </section>
-    <section class="upload-zone" style="cursor:default; max-width:500px; margin:0 auto;">
-      <div id="download-content">
-        <div class="upload-icon">📦</div>
-        <p id="file-name" style="font-weight:600;">ZIP Archive</p>
-        <p id="file-size" style="color:var(--text-secondary);">Size</p>
-        <button id="download-btn" style="background:var(--accent);padding:0.6rem 2rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;margin-top:1rem;">⬇️ Download ZIP</button>
-        <p id="expiry" style="color:var(--text-secondary);font-size:0.8rem;margin-top:1rem;"></p>
+  <header class="site-header"><a class="brand" href="/" aria-label="CloudDrop home"><span class="brand-mark">C</span><span>CloudDrop</span></a><button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme">◐</button></header>
+  <main class="container page-shell">
+    <section class="hero"><span class="eyebrow">SECURE TRANSFER</span><h1>Your files are<br><span>ready to go.</span></h1><p id="file-info">Checking the transfer…</p></section>
+    <section class="transfer-card" style="max-width:620px">
+      <div id="download-content" class="success-panel">
+        <div class="success-icon" aria-hidden="true">↓</div>
+        <div><span class="eyebrow success-eyebrow">DOWNLOAD</span><h3 id="file-name">Preparing transfer…</h3><p id="file-size">—</p></div>
+        <button id="download-btn" class="btn btn-primary" type="button">Download files</button>
+        <p id="expiry" class="inline-status"></p>
       </div>
-      <div id="error-content" style="display:none;">
-        <div class="upload-icon">❌</div>
-        <p id="error-message" style="color:var(--danger);">File not found or expired.</p>
-      </div>
+      <div id="error-content" class="error-panel" hidden><strong>Transfer unavailable</strong><p id="error-message">This transfer could not be loaded.</p><a class="btn btn-secondary" href="/">Send your own files</a></div>
     </section>
   </main>
-  <script src="/js/theme.js"></script>
+  <footer class="site-footer"><span>CloudDrop</span><span>Private, direct, time-limited.</span></footer>
+  <script src="/js/config.js"></script><script src="/js/theme.js"></script>
   <script>
-    const API_BASE = 'https://23pm2zjtw8.execute-api.us-east-1.amazonaws.com/prod';
-    const transferId = window.location.pathname.split('/').pop();
-
-    async function loadTransfer() {
-      try {
-        if (!transferId) throw new Error('Transfer not found');
-        const res = await fetch(`${API_BASE}/transfer/${encodeURIComponent(transferId)}`);
-        if (!res.ok) {
-          if (res.status === 404) throw new Error('Transfer not found');
-          if (res.status === 410) throw new Error('This transfer has expired');
-          if (res.status === 400) throw new Error('This transfer is not ready yet');
-          throw new Error('Failed to load transfer');
-        }
-        const data = await res.json();
-        if (!data.downloadUrl) throw new Error('Download is currently unavailable');
-        document.getElementById('file-info').textContent = `Ready to download ${data.fileCount || 1} files as ZIP`;
-        document.getElementById('file-name').textContent = data.zipFileName || 'archive.zip';
-        const sizeMB = ((data.totalSize || 0) / 1024 / 1024).toFixed(2);
-        document.getElementById('file-size').textContent = `${sizeMB} MB (ZIP)`;
-        document.getElementById('expiry').textContent = '🔒 Secure, time-limited download';
-        document.getElementById('download-btn').onclick = () => {
-          window.location.href = data.downloadUrl;
-        };
-      } catch (err) {
-        document.getElementById('file-info').textContent = '❌ Unable to load transfer';
-        document.getElementById('error-message').textContent = err.message;
-        document.getElementById('download-content').style.display = 'none';
-        document.getElementById('error-content').style.display = 'block';
-        console.error('Download error:', err);
-      }
-    }
-    loadTransfer();
+    (() => {
+      const API_BASE=window.CLOUDDROP_CONFIG?.apiBase||''; const id=window.location.pathname.split('/').filter(Boolean).pop(); const $=x=>document.getElementById(x);
+      async function load(){
+        try{if(!API_BASE)throw new Error('Transfer service is not configured.');if(!id)throw new Error('Transfer not found.');const res=await fetch(`${API_BASE}/transfer/${encodeURIComponent(id)}`);const body=await res.json().catch(()=>({}));if(!res.ok){const code=res.status===404?'Transfer not found.':res.status===410?'This transfer has expired.':res.status===409?'This transfer is not ready yet.':'Unable to load this transfer.';throw new Error(body?.error?.message||body?.error||code)}const data=body.data||body;if(!data.downloadUrl)throw new Error('Download is currently unavailable.');$('file-info').textContent=`Ready to download ${data.fileCount||1} file${(data.fileCount||1)===1?'':'s'}`;$('file-name').textContent=data.fileName||'CloudDrop transfer';$('file-size').textContent=data.fileSize?`${(data.fileSize/1024/1024).toFixed(2)} MB`:'Size unavailable';$('expiry').textContent='🔒 Secure, time-limited download';$('download-btn').onclick=()=>{window.location.href=data.downloadUrl};}
+        catch(err){$('file-info').textContent='Transfer unavailable';$('error-message').textContent=err.message;$('download-content').hidden=true;$('error-content').hidden=false;console.error('transfer load failed',err.name)}
+      } load();
+    })();
   </script>
 </body>
 </html>
