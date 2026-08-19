@@ -1,9 +1,0 @@
-[
-  {
-    "ResourceType": "AWS::DynamoDB::Table",
-    "LogicalResourceId": "MetadataTable",
-    "ResourceIdentifier": {
-      "TableName": "CloudDrop-Metadata-dev"
-    }
-  }
-]
