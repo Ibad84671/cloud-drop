@@ -1,71 +1,11 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Download — CloudDrop</title>
-  <link rel="stylesheet" href="/css/style.css" />
-</head>
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="robots" content="noindex,nofollow" /><title>Download — CloudDrop</title><link rel="stylesheet" href="/css/style.css" /></head>
 <body>
-  <header>
-    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
-    <nav><div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div></nav>
-  </header>
-  <main class="container">
-    <section class="hero">
-      <h1>📥 Download Your Files</h1>
-      <p id="file-info">Loading...</p>
-    </section>
-    <section class="upload-zone" style="cursor:default; max-width:500px; margin:0 auto;">
-      <div id="download-content">
-        <div class="upload-icon">📦</div>
-        <p id="file-name" style="font-weight:600;">ZIP Archive</p>
-        <p id="file-size" style="color:var(--text-secondary);">Size</p>
-        <button id="download-btn" style="background:var(--accent);padding:0.6rem 2rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;margin-top:1rem;">⬇️ Download ZIP</button>
-        <p id="expiry" style="color:var(--text-secondary);font-size:0.8rem;margin-top:1rem;"></p>
-      </div>
-      <div id="error-content" style="display:none;">
-        <div class="upload-icon">❌</div>
-        <p id="error-message" style="color:var(--danger);">File not found or expired.</p>
-      </div>
-    </section>
-  </main>
-  <script src="/js/theme.js"></script>
-  <script>
-<<<<<<< HEAD
-    const API_BASE = 'https://23pm2zjtw8.execute-api.us-east-1.amazonaws.com/prod';
-=======
-    // ✅ CORRECT API URL for the new API Gateway
-    const API_BASE = 'https://zsiiwyicn3.execute-api.us-east-1.amazonaws.com/prod';
->>>>>>> 8779baac422899ac4ecc705b9cd116945b48a3b2
-    const transferId = window.location.pathname.split('/').pop();
-
-    async function loadTransfer() {
-      try {
-        const res = await fetch(`${API_BASE}/transfer/${transferId}`);
-        if (!res.ok) {
-          if (res.status === 404) throw new Error('Transfer not found');
-          if (res.status === 410) throw new Error('This transfer has expired');
-          throw new Error('Failed to load');
-        }
-        const data = await res.json();
-        document.getElementById('file-info').textContent = `Ready to download ${data.fileCount || 1} files as ZIP`;
-        document.getElementById('file-name').textContent = data.zipFileName || 'archive.zip';
-        const sizeMB = ((data.totalSize || 0) / 1024 / 1024).toFixed(2);
-        document.getElementById('file-size').textContent = `${sizeMB} MB (ZIP)`;
-        document.getElementById('expiry').textContent = '🔒 Secure download link';
-        document.getElementById('download-btn').onclick = () => {
-          window.location.href = data.downloadUrl;
-        };
-        document.getElementById('download-content').style.display = 'block';
-      } catch (err) {
-        document.getElementById('file-info').textContent = '❌ Error';
-        document.getElementById('error-message').textContent = err.message;
-        document.getElementById('error-content').style.display = 'block';
-        console.error('Download error:', err);
-      }
-    }
-    loadTransfer();
-  </script>
-</body>
-</html>
+<header><div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div><nav><div class="theme-toggle" id="themeToggle" title="Toggle theme" role="button" tabindex="0">🌓</div></nav></header>
+<main class="container"><section class="hero"><h1>📥 Download Your Files</h1><p id="file-info">Loading…</p></section><section class="upload-zone" style="cursor:default;max-width:500px;margin:0 auto;"><div id="download-content"><div class="upload-icon">📦</div><p id="file-name" style="font-weight:600;">Archive</p><p id="file-size" style="color:var(--text-secondary);">Preparing…</p><button id="download-btn" type="button" style="background:var(--accent);padding:.6rem 2rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;margin-top:1rem;">⬇️ Download</button><p id="expiry" style="color:var(--text-secondary);font-size:.8rem;margin-top:1rem;">The download URL is short-lived.</p></div><div id="error-content" hidden><div class="upload-icon">❌</div><p id="error-message" style="color:var(--danger);">File not found or expired.</p></div></section></main>
+<script src="/js/config.js"></script><script src="/js/theme.js"></script>
+<script>
+(() => {const config=window.CLOUDDROP_CONFIG||{};const API_BASE=String(config.apiBase||'').replace(/\/$/,'');const transferId=decodeURIComponent(window.location.pathname.replace(/^\/t\//,'').split('/')[0]||'');const showError=message=>{document.getElementById('file-info').textContent='❌ Error';document.getElementById('error-message').textContent=message;document.getElementById('error-content').hidden=false;document.getElementById('download-content').hidden=true;};async function loadTransfer(){if(!API_BASE||!transferId)return showError('Invalid transfer link.');try{const response=await fetch(`${API_BASE}/transfer/${encodeURIComponent(transferId)}`);const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Transfer unavailable.');document.getElementById('file-info').textContent=`Ready to download ${data.fileCount||1} file${(data.fileCount||1)===1?'':'s'}`;document.getElementById('file-name').textContent=data.fileName||'archive.zip';const size=Number(data.totalSize||data.fileSize||0);document.getElementById('file-size').textContent=`${(size/1024/1024).toFixed(2)} MB`;document.getElementById('download-btn').onclick=()=>{window.location.href=data.downloadUrl;};}catch(error){showError(error.message);}}loadTransfer();})();
+</script>
+</body></html>
