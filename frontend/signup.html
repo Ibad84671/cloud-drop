@@ -1,149 +1,22 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign Up — CloudDrop</title>
-  <link rel="stylesheet" href="/css/style.css" />
-</head>
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Sign Up — CloudDrop</title><link rel="stylesheet" href="/css/style.css" /></head>
 <body>
-  <header>
-    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
-    <nav><div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div></nav>
-  </header>
-  <main class="auth-container glass">
-    <h2>Create Account</h2>
-    <form id="signup-form">
-      <label for="email">Email</label>
-      <input type="email" id="email" placeholder="you@example.com" required />
-      <label for="password">Password</label>
-      <input type="password" id="password" placeholder="Min 8 characters" required minlength="8" />
-      <button type="submit" id="signup-btn">Sign Up</button>
-      <div id="signup-loading" style="display:none; margin-top:0.5rem; color:var(--text-secondary);">⏳ Submitting...</div>
-    </form>
-    <div id="otp-section" style="display:none; margin-top:1.5rem;">
-      <p style="color:var(--text-secondary);">We've sent a 6-digit code to your email.</p>
-      <label for="otp">Verification Code</label>
-      <input type="text" id="otp" placeholder="e.g. 123456" maxlength="6" />
-      <button id="confirm-btn" style="margin-top:0.5rem;">Verify</button>
-      <p style="margin-top:0.5rem; font-size:0.9rem;">
-        <a href="#" id="resend-otp" style="color:var(--accent);">Resend code</a>
-      </p>
-      <div id="otp-message" style="margin-top:0.5rem; font-weight:500;"></div>
-    </div>
-    <p style="text-align:center;margin-top:1rem;">
-      Already have an account? <a href="/login.html" style="color:var(--accent);">Log In</a>
-    </p>
-  </main>
-  <script src="/js/theme.js"></script>
-  <script>
-    const REGION = 'us-east-1';
-    const USER_POOL_ID = 'us-east-1_7c3V7vIZi';
-    const CLIENT_ID = '5rp8tss9iu3s1jb4p5qdljog2e';
-    const COGNITO_URL = `https://cognito-idp.${REGION}.amazonaws.com/`;
-
-    async function callCognito(action, payload) {
-      const res = await fetch(COGNITO_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-amz-json-1.1',
-          'X-Amz-Target': `AWSCognitoIdentityProviderService.${action}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Cognito error');
-      return data;
-    }
-
-    const signupForm = document.getElementById('signup-form');
-    const otpSection = document.getElementById('otp-section');
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    const signupBtn = document.getElementById('signup-btn');
-    const signupLoading = document.getElementById('signup-loading');
-    const otpInput = document.getElementById('otp');
-    const confirmBtn = document.getElementById('confirm-btn');
-    const otpMessage = document.getElementById('otp-message');
-    const resendLink = document.getElementById('resend-otp');
-    let currentUsername = '';
-
-    signupForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = emailInput.value.trim();
-      const password = passwordInput.value;
-      if (!email || !password) return alert('Please fill all fields.');
-      signupBtn.disabled = true;
-      signupBtn.style.opacity = '0.6';
-      signupLoading.style.display = 'block';
-      try {
-        await callCognito('SignUp', {
-          ClientId: CLIENT_ID,
-          Username: email,
-          Password: password,
-          UserAttributes: [{ Name: 'email', Value: email }]
-        });
-        currentUsername = email;
-        signupForm.style.display = 'none';
-        otpSection.style.display = 'block';
-        otpMessage.textContent = '✅ Verification code sent to your email.';
-        otpMessage.style.color = 'var(--success)';
-      } catch (err) {
-        alert('❌ Sign-up failed: ' + err.message);
-      } finally {
-        signupBtn.disabled = false;
-        signupBtn.style.opacity = '1';
-        signupLoading.style.display = 'none';
-      }
-    });
-
-    confirmBtn.addEventListener('click', async () => {
-      const code = otpInput.value.trim();
-      if (!code) {
-        otpMessage.textContent = '❌ Please enter the code.';
-        otpMessage.style.color = 'var(--danger)';
-        return;
-      }
-      confirmBtn.disabled = true;
-      confirmBtn.style.opacity = '0.6';
-      otpMessage.textContent = 'Verifying...';
-      otpMessage.style.color = 'var(--text-secondary)';
-      try {
-        await callCognito('ConfirmSignUp', {
-          ClientId: CLIENT_ID,
-          Username: currentUsername,
-          ConfirmationCode: code
-        });
-        otpMessage.textContent = '✅ Verified! Redirecting...';
-        otpMessage.style.color = 'var(--success)';
-        setTimeout(() => window.location.href = '/login.html', 1500);
-      } catch (err) {
-        otpMessage.textContent = '❌ ' + err.message;
-        otpMessage.style.color = 'var(--danger)';
-      } finally {
-        confirmBtn.disabled = false;
-        confirmBtn.style.opacity = '1';
-      }
-    });
-
-    resendLink.addEventListener('click', async (e) => {
-      e.preventDefault();
-      if (!currentUsername) return alert('No sign-up in progress.');
-      resendLink.style.opacity = '0.6';
-      try {
-        await callCognito('ResendConfirmationCode', {
-          ClientId: CLIENT_ID,
-          Username: currentUsername
-        });
-        otpMessage.textContent = '✅ A new code has been sent.';
-        otpMessage.style.color = 'var(--success)';
-      } catch (err) {
-        otpMessage.textContent = '❌ ' + err.message;
-        otpMessage.style.color = 'var(--danger)';
-      } finally {
-        resendLink.style.opacity = '1';
-      }
-    });
-  </script>
-</body>
-</html>
+<header><div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div><nav><div class="theme-toggle" id="themeToggle" title="Toggle theme" role="button" tabindex="0">🌓</div></nav></header>
+<main class="auth-container glass">
+  <h2>Create Account</h2>
+  <form id="signup-form"><label for="email">Email</label><input type="email" id="email" placeholder="you@example.com" autocomplete="email" required /><label for="password">Password</label><input type="password" id="password" placeholder="Min 10 characters" autocomplete="new-password" required minlength="10" /><button type="submit" id="signup-btn">Sign Up</button><div id="signup-loading" hidden style="margin-top:.5rem;color:var(--text-secondary);">⏳ Submitting…</div></form>
+  <div id="otp-section" hidden style="margin-top:1.5rem;"><p style="color:var(--text-secondary);">We've sent a 6-digit code to your email.</p><label for="otp">Verification Code</label><input type="text" id="otp" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6" /><button id="confirm-btn" type="button" style="margin-top:.5rem;">Verify</button><p style="margin-top:.5rem;font-size:.9rem;"><a href="#" id="resend-otp" style="color:var(--accent);">Resend code</a></p><div id="otp-message" role="status" style="margin-top:.5rem;font-weight:500;"></div></div>
+  <p style="text-align:center;margin-top:1rem;">Already have an account? <a href="/login.html" style="color:var(--accent);">Log In</a></p>
+</main>
+<script src="/js/config.js"></script><script src="/js/theme.js"></script>
+<script>
+(() => {
+  const config=window.CLOUDDROP_CONFIG||{};const cognitoUrl=`https://cognito-idp.${encodeURIComponent(config.region||'us-east-1')}.amazonaws.com/`;const form=document.getElementById('signup-form');const otpSection=document.getElementById('otp-section');const emailInput=document.getElementById('email');const passwordInput=document.getElementById('password');const signupBtn=document.getElementById('signup-btn');const signupLoading=document.getElementById('signup-loading');const otpInput=document.getElementById('otp');const confirmBtn=document.getElementById('confirm-btn');const otpMessage=document.getElementById('otp-message');const resendLink=document.getElementById('resend-otp');let currentUsername='';
+  async function callCognito(action,payload){const response=await fetch(cognitoUrl,{method:'POST',headers:{'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':`AWSCognitoIdentityProviderService.${action}`},body:JSON.stringify(payload)});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'Cognito request failed.');return data;}
+  form.addEventListener('submit',async event=>{event.preventDefault();const email=emailInput.value.trim();const password=passwordInput.value;if(!config.clientId||!email||!password)return;signupBtn.disabled=true;signupLoading.hidden=false;try{await callCognito('SignUp',{ClientId:config.clientId,Username:email,Password:password,UserAttributes:[{Name:'email',Value:email}]});currentUsername=email;form.hidden=true;otpSection.hidden=false;otpMessage.textContent='✅ Verification code sent to your email.';otpMessage.style.color='var(--success)';}catch(error){otpMessage.textContent=`❌ ${error.message}`;otpMessage.style.color='var(--danger)';}finally{signupBtn.disabled=false;signupLoading.hidden=true;}});
+  confirmBtn.addEventListener('click',async()=>{const code=otpInput.value.trim();if(!/^\d{6}$/.test(code)||!currentUsername){otpMessage.textContent='❌ Enter the 6-digit verification code.';otpMessage.style.color='var(--danger)';return;}confirmBtn.disabled=true;try{await callCognito('ConfirmSignUp',{ClientId:config.clientId,Username:currentUsername,ConfirmationCode:code});otpMessage.textContent='✅ Verified! Redirecting to login…';otpMessage.style.color='var(--success)';setTimeout(()=>window.location.href='/login.html',1000);}catch(error){otpMessage.textContent=`❌ ${error.message}`;otpMessage.style.color='var(--danger)';}finally{confirmBtn.disabled=false;}});
+  resendLink.addEventListener('click',async event=>{event.preventDefault();if(!currentUsername)return;resendLink.style.pointerEvents='none';try{await callCognito('ResendConfirmationCode',{ClientId:config.clientId,Username:currentUsername});otpMessage.textContent='✅ A new code has been sent.';otpMessage.style.color='var(--success)';}catch(error){otpMessage.textContent=`❌ ${error.message}`;otpMessage.style.color='var(--danger)';}finally{resendLink.style.pointerEvents='';}});
+})();
+</script>
+</body></html>
