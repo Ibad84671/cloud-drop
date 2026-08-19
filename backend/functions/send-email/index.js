@@ -1,38 +1,9 @@
-const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
-
-const ses = new SESClient({});
-const SOURCE = process.env.SES_SOURCE_EMAIL;
-const MAX_NAME_LENGTH = 180;
-const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,Authorization', 'Content-Type': 'application/json' };
-const response = (statusCode, body) => ({ statusCode, headers, body: JSON.stringify(body) });
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-
-exports.handler = async event => {
-  if (event?.requestContext?.http?.method === 'OPTIONS') return response(204, null);
-  try {
-    const body = typeof event.body === 'string' ? JSON.parse(event.body) : (event.body || {});
-    const to = String(body.to || '').trim();
-    const link = String(body.link || '').trim();
-    const fileName = String(body.fileName || 'files').trim();
-    if (!SOURCE || !emailPattern.test(to) || to.length > 254) return response(400, { success: false, error: { code: 'INVALID_EMAIL', message: 'Enter a valid recipient email.' } });
-    if (!/^https:\/\//i.test(link) || link.length > 2048) return response(400, { success: false, error: { code: 'INVALID_LINK', message: 'Invalid transfer link.' } });
-    if (!fileName || fileName.length > MAX_NAME_LENGTH) return response(400, { success: false, error: { code: 'INVALID_FILE_NAME', message: 'Invalid file name.' } });
-
-    await ses.send(new SendEmailCommand({
-      Source: SOURCE,
-      Destination: { ToAddresses: [to] },
-      Message: {
-        Subject: { Data: `${fileName} shared via CloudDrop`, Charset: 'UTF-8' },
-        Body: {
-          Text: { Data: `A file transfer has been shared with you. Download it here: ${link}\n\nThis link expires with the transfer.`, Charset: 'UTF-8' },
-          Html: { Data: `<p>A file transfer has been shared with you.</p><p><strong>${escapeHtml(fileName)}</strong></p><p><a href="${escapeHtml(link)}">Download files</a></p><p>This link expires with the transfer.</p>`, Charset: 'UTF-8' }
-        }
-      }
-    }));
-    return response(200, { success: true, data: { sent: true } });
-  } catch (error) {
-    console.error('send-email failed', { name: error.name });
-    return response(500, { success: false, error: { code: 'EMAIL_SEND_FAILED', message: 'Unable to send the transfer email.' } });
-  }
-};
+const {SESClient,SendEmailCommand}=require('@aws-sdk/client-ses');
+const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
+const {DynamoDBDocumentClient,GetCommand}=require('@aws-sdk/lib-dynamodb');
+const ses=new SESClient({});
+const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const headers=()=>({'Access-Control-Allow-Origin':process.env.ALLOWED_ORIGIN,'Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Content-Type':'application/json'});
+const out=(s,b)=>({statusCode:s,headers:headers(),body:JSON.stringify(b)}),fail=(s,c,m)=>out(s,{success:false,error:{code:c,message:m}}),email=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+exports.handler=async e=>{if(e?.requestContext?.http?.method==='OPTIONS')return out(204,null);try{if(!process.env.SES_SOURCE_EMAIL)return fail(503,'EMAIL_SHARING_DISABLED','Email sharing is not enabled for this deployment.');const b=typeof e.body==='string'?JSON.parse(e.body):e.body||{};const to=String(b.to||'').trim(),id=String(b.transferId||'').trim();if(!email.test(to)||to.length>254)return fail(400,'INVALID_EMAIL','Enter a valid recipient email.');if(!/^[0-9a-f-]{36}$/i.test(id))return fail(400,'INVALID_TRANSFER_ID','Invalid transfer ID.');const item=(await ddb.send(new GetCommand({TableName:process.env.TABLE_NAME,Key:{transferId:id}}))).Item;if(!item)return fail(404,'TRANSFER_NOT_FOUND','Transfer not found.');if(item.expiresAt&&Date.parse(item.expiresAt)<=Date.now())return fail(410,'TRANSFER_EXPIRED','Transfer expired.');if(item.status!=='ready')return fail(409,'TRANSFER_NOT_READY','The transfer is not ready to share.');const link=`${process.env.FRONTEND_BASE_URL}/t/${encodeURIComponent(id)}`,name=item.isBatch?'CloudDrop transfer':String(item.originalFileName||'CloudDrop transfer').slice(0,180);await ses.send(new SendEmailCommand({Source:process.env.SES_SOURCE_EMAIL,Destination:{ToAddresses:[to]},Message:{Subject:{Data:`${name} shared via CloudDrop`,Charset:'UTF-8'},Body:{Text:{Data:`A CloudDrop transfer is ready for download:\n${link}\n\nThis link expires with the transfer.`,Charset:'UTF-8'},Html:{Data:`<p>A CloudDrop transfer is ready for download.</p><p><strong>${esc(name)}</strong></p><p><a href="${esc(link)}">Download files</a></p><p>This link expires with the transfer.</p>`,Charset:'UTF-8'}}}}));return out(200,{success:true,data:{sent:true}});}catch(x){console.error('send-email failed',{name:x?.name});return fail(500,'EMAIL_SEND_FAILED','Unable to send the transfer email.');}};
