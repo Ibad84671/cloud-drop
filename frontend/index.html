@@ -46,11 +46,7 @@
   </main>
   <script src="/js/theme.js"></script>
   <script>
-<<<<<<< HEAD
     const API_BASE = 'https://23pm2zjtw8.execute-api.us-east-1.amazonaws.com/prod';
-=======
-    const API_BASE = 'https://zsiiwyicn3.execute-api.us-east-1.amazonaws.com/prod';
->>>>>>> 8779baac422899ac4ecc705b9cd116945b48a3b2
     const token = localStorage.getItem('accessToken') || localStorage.getItem('idToken');
     const statusEl = document.getElementById('user-status');
     const authBtn = document.getElementById('auth-btn');
@@ -90,37 +86,37 @@
     });
 
     document.getElementById('email-btn')?.addEventListener('click', async (e) => {
-  e.stopPropagation();
-  const email = document.getElementById('recipient-email').value.trim();
-  const link = document.getElementById('share-link').value;
-  const fileName = 'files.zip';
+      e.stopPropagation();
+      const email = document.getElementById('recipient-email').value.trim();
+      const link = document.getElementById('share-link').value;
+      const fileName = 'files.zip';
 
-  if (!email) {
-    alert('Please enter a recipient email.');
-    return;
-  }
-  if (!link) {
-    alert('No file to send. Please upload first.');
-    return;
-  }
+      if (!email) {
+        alert('Please enter a recipient email.');
+        return;
+      }
+      if (!link) {
+        alert('No file to send. Please upload first.');
+        return;
+      }
 
-  try {
-    const res = await fetch(`${API_BASE}/send-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: email, link, fileName })
+      try {
+        const res = await fetch(`${API_BASE}/send-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: email, link, fileName })
+        });
+        if (res.ok) {
+          alert('✅ Email sent successfully!');
+        } else {
+          const error = await res.json();
+          alert('❌ Email failed: ' + (error.error || 'Unknown error') + '\nPlease use Copy Link instead.');
+        }
+      } catch (err) {
+        alert('❌ Email sending failed. Please use Copy Link.');
+        console.error(err);
+      }
     });
-    if (res.ok) {
-      alert('✅ Email sent successfully!');
-    } else {
-      const error = await res.json();
-      alert('❌ Email failed: ' + (error.error || 'Unknown error') + '\nPlease use Copy Link instead.');
-    }
-  } catch (err) {
-    alert('❌ Email sending failed. Please use Copy Link.');
-    console.error(err);
-  }
-});
 
     document.getElementById('new-upload-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -168,13 +164,16 @@
           body: JSON.stringify({ files: fileInfos })
         });
         const data = await res.json();
+        if (!res.ok || !data.transferId || !Array.isArray(data.uploads)) {
+          throw new Error(data.error || 'Unable to initialize upload.');
+        }
         const transferId = data.transferId;
         const uploads = data.uploads;
 
         let uploaded = 0;
         for (const file of files) {
           const uploadInfo = uploads.find(u => u.fileName === file.name);
-          if (!uploadInfo) continue;
+          if (!uploadInfo) throw new Error(`No upload URL returned for ${file.name}`);
           const uploadRes = await fetch(uploadInfo.uploadUrl, {
             method: 'PUT',
             body: file,
@@ -186,12 +185,16 @@
           updateProgress(progress);
         }
 
-        await fetch(`${API_BASE}/batch/${transferId}/complete`, { method: 'POST' });
+        const completeRes = await fetch(`${API_BASE}/batch/${transferId}/complete`, { method: 'POST' });
+        if (!completeRes.ok) {
+          const completeData = await completeRes.json().catch(() => ({}));
+          throw new Error(completeData.error || 'Unable to finalize transfer.');
+        }
 
         updateProgress(100);
         document.getElementById('upload-progress').style.display = 'none';
         document.getElementById('upload-result').style.display = 'block';
-        const shareLink = `${window.location.origin}/t/${data.transferId}`;
+        const shareLink = `${window.location.origin}/t/${transferId}`;
         document.getElementById('share-link').value = shareLink;
         try { await navigator.clipboard.writeText(shareLink); } catch(e) {}
       } catch (err) {
