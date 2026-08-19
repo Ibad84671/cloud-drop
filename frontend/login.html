@@ -23,7 +23,7 @@
   function base64url(bytes){return btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');}
   function verifier(){const b=new Uint8Array(32);crypto.getRandomValues(b);return base64url(b);}
   function state(){const b=new Uint8Array(24);crypto.getRandomValues(b);return base64url(b);}
-  function showError(text){$('message').textContent=text;$('message').className='auth-status error';$('login-btn').disabled=false;$('login-btn').textContent='Continue securely';$('.auth-error-actions').hidden=false;}
+  function showError(text){$('message').textContent=text;$('message').className='auth-status error';$('login-btn').disabled=false;$('login-btn').textContent='Continue securely';document.querySelector('.auth-error-actions').hidden=false;}
   async function start(){
     if(!c.cognitoDomain||!c.cognitoClientId)throw new Error('Authentication is not configured for this deployment.');
     const v=verifier();const s=state();
@@ -33,7 +33,7 @@
     location.href=`https://${c.cognitoDomain}/oauth2/authorize?${p}`;
   }
   async function begin(){
-    $('login-btn').disabled=true;$('login-btn').textContent='Opening secure sign in…';$('message').textContent='';$('message').className='auth-status';$('.auth-error-actions').hidden=true;
+    $('login-btn').disabled=true;$('login-btn').textContent='Opening secure sign in…';$('message').textContent='';$('message').className='auth-status';document.querySelector('.auth-error-actions').hidden=true;
     try{await start();}catch(e){showError(e.message);}
   }
   $('login-btn').addEventListener('click',begin);$('retry-btn').addEventListener('click',begin);

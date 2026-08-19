@@ -133,7 +133,7 @@ Resources:
       AutoVerifiedAttributes: [email]
       UsernameAttributes: [email]
       Policies:
-        PasswordPolicy: {MinimumLength: 12, RequireUppercase: true, RequireLowercase: true, RequireNumbers: true, RequireSymbols: true}
+        PasswordPolicy: {MinimumLength: 8, RequireUppercase: true, RequireLowercase: true, RequireNumbers: true, RequireSymbols: true}
       AccountRecoverySetting:
         RecoveryMechanisms: [{Name: verified_email, Priority: 1}]
 
