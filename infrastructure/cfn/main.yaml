@@ -29,7 +29,9 @@ Resources:
       BucketName: !Sub 'clouddrop-uploads-${Environment}-${AWS::AccountId}'
       LifecycleConfiguration:
         Rules:
-          - Id: ExpireAfter30Days
+          
+    CORSConfiguration:\n      CORSRules:\n        - AllowedOrigins: ["*"]\n          AllowedMethods: ["PUT","GET","HEAD"]\n          AllowedHeaders: ["*"]\n          ExposeHeaders: ["ETag"]\n          MaxAgeSeconds: 3000
+        - Id: ExpireAfter30Days
             Status: Enabled
             ExpirationInDays: 30
       VersioningConfiguration:
