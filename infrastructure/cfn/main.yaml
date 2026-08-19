@@ -25,7 +25,7 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
-      BucketName: {Fn::Sub: clouddrop-frontend-${Environment}-${AWS::AccountId}}
+      BucketName: {Fn::Sub: 'clouddrop-frontend-${Environment}-${AWS::AccountId}'}
       PublicAccessBlockConfiguration: {BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true}
       BucketEncryption: {ServerSideEncryptionConfiguration: [{ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}}]}
 
@@ -47,14 +47,14 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
-      BucketName: {Fn::Sub: clouddrop-uploads-${Environment}-${AWS::AccountId}}
+      BucketName: {Fn::Sub: 'clouddrop-uploads-${Environment}-${AWS::AccountId}'}
       PublicAccessBlockConfiguration: {BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true}
       BucketEncryption: {ServerSideEncryptionConfiguration: [{ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}}]}
       LifecycleConfiguration:
         Rules: [{Id: ExpireTransferObjects, Status: Enabled, ExpirationInDays: 8}]
       CorsConfiguration:
         CorsRules:
-          - AllowedOrigins: [{Fn::Sub: https://${CloudFrontDistribution.DomainName}}]
+          - AllowedOrigins: [{Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}]
             AllowedMethods: [PUT, GET, HEAD]
             AllowedHeaders: ['*']
             ExposedHeaders: [ETag]
@@ -64,12 +64,12 @@ Resources:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
       CloudFrontOriginAccessIdentityConfig:
-        Comment: {Fn::Sub: CloudDrop frontend origin identity (${Environment})}
+        Comment: {Fn::Sub: 'CloudDrop frontend origin identity (${Environment})'}
 
   CloudFrontFunction:
     Type: AWS::CloudFront::Function
     Properties:
-      Name: {Fn::Sub: CloudDrop-Rewrite-${Environment}-${AWS::AccountId}}
+      Name: {Fn::Sub: 'CloudDrop-Rewrite-${Environment}-${AWS::AccountId}'}
       AutoPublish: true
       FunctionConfig: {Comment: Rewrite /t/<id> to the static transfer page., Runtime: cloudfront-js-1.0}
       FunctionCode: |
@@ -79,15 +79,14 @@ Resources:
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
       ResponseHeadersPolicyConfig:
-        Name: {Fn::Sub: CloudDrop-Security-${Environment}-${AWS::AccountId}}
+        Name: {Fn::Sub: 'CloudDrop-Security-${Environment}-${AWS::AccountId}'}
         SecurityHeadersConfig:
           StrictTransportSecurity: {Override: true, AccessControlMaxAgeSec: 31536000, IncludeSubdomains: true}
           ContentTypeOptions: {Override: true}
           FrameOptions: {Override: true, FrameOption: DENY}
           ReferrerPolicy: {Override: true, ReferrerPolicy: strict-origin-when-cross-origin}
-          PermissionsPolicy: {Override: true, Policy: 'camera=(), microphone=(), geolocation=()'}
           ContentSecurityPolicy:
-            ContentSecurityPolicy: {Fn::Sub: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://clouddrop-${AWS::AccountId}-${Environment}.auth.${AWS::Region}.amazoncognito.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.execute-api.${AWS::Region}.amazonaws.com https://cognito-idp.${AWS::Region}.amazonaws.com https://clouddrop-${AWS::AccountId}-${Environment}.auth.${AWS::Region}.amazoncognito.com; img-src 'self' data:; font-src 'self' data:;"}
+            ContentSecurityPolicy: {Fn::Sub: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://clouddrop-${AWS::AccountId}-${Environment}.auth.${AWS::Region}.amazoncognito.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.execute-api.${AWS::Region}.amazonaws.com https://cognito-idp.${AWS::Region}.amazonaws.com https://clouddrop-${AWS::AccountId}-${Environment}.auth.${AWS::Region}.amazoncognito.com https://clouddrop-uploads-${Environment}-${AWS::AccountId}.s3.${AWS::Region}.amazonaws.com; img-src 'self' data:; font-src 'self' data:;"}
             Override: true
 
   CloudFrontDistribution:
@@ -100,7 +99,7 @@ Resources:
         Origins:
           - Id: S3Frontend
             DomainName: {Fn::GetAtt: [FrontendBucket, RegionalDomainName]}
-            S3OriginConfig: {OriginAccessIdentity: {Fn::Sub: origin-access-identity/cloudfront/${OAI}}}
+            S3OriginConfig: {OriginAccessIdentity: {Fn::Sub: 'origin-access-identity/cloudfront/${OAI}'}}
         DefaultCacheBehavior:
           TargetOriginId: S3Frontend
           ViewerProtocolPolicy: redirect-to-https
@@ -117,7 +116,7 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
-      TableName: {Fn::Sub: CloudDrop-Metadata-${Environment}}
+      TableName: {Fn::Sub: 'CloudDrop-Metadata-${Environment}'}
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions: [{AttributeName: transferId, AttributeType: S}, {AttributeName: ownerId, AttributeType: S}]
       KeySchema: [{AttributeName: transferId, KeyType: HASH}]
@@ -130,7 +129,7 @@ Resources:
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: {Fn::Sub: CloudDrop-UserPool-${Environment}}
+      UserPoolName: {Fn::Sub: 'CloudDrop-UserPool-${Environment}'}
       AutoVerifiedAttributes: [email]
       UsernameAttributes: [email]
       Policies:
@@ -142,26 +141,26 @@ Resources:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       UserPoolId: {Ref: CognitoUserPool}
-      ClientName: {Fn::Sub: CloudDrop-Web-${Environment}}
+      ClientName: {Fn::Sub: 'CloudDrop-Web-${Environment}'}
       GenerateSecret: false
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email, profile]
       SupportedIdentityProviders: [COGNITO]
-      CallbackURLs: [{Fn::Sub: https://${CloudFrontDistribution.DomainName}/auth-callback.html}]
-      LogoutURLs: [{Fn::Sub: https://${CloudFrontDistribution.DomainName}/}]
+      CallbackURLs: [{Fn::Sub: 'https://${CloudFrontDistribution.DomainName}/auth-callback.html'}]
+      LogoutURLs: [{Fn::Sub: 'https://${CloudFrontDistribution.DomainName}/'}]
       ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
 
   CognitoUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      Domain: {Fn::Sub: clouddrop-${AWS::AccountId}-${Environment}}
+      Domain: {Fn::Sub: 'clouddrop-${AWS::AccountId}-${Environment}'}
       UserPoolId: {Ref: CognitoUserPool}
 
   ApiGateway:
     Type: AWS::ApiGateway::RestApi
     Properties:
-      Name: {Fn::Sub: CloudDrop-${Environment}}
+      Name: {Fn::Sub: 'CloudDrop-${Environment}'}
       EndpointConfiguration: {Types: [REGIONAL]}
       MinimumCompressionSize: 1024
 
@@ -290,7 +289,7 @@ Resources:
           MAX_FILES: '20'
           MAX_TOTAL_SIZE: '2147483648'
           MAX_FILE_SIZE: '2147483648'
-          ALLOWED_ORIGIN: {Fn::Sub: https://${CloudFrontDistribution.DomainName}}
+          ALLOWED_ORIGIN: {Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}
       Code:
         ZipFile: |
           const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
@@ -316,7 +315,7 @@ Resources:
           TABLE_NAME: {Ref: MetadataTable}
           UPLOADS_BUCKET: {Ref: UploadsBucket}
           MAX_ARCHIVE_BYTES: '2147483648'
-          ALLOWED_ORIGIN: {Fn::Sub: https://${CloudFrontDistribution.DomainName}}
+          ALLOWED_ORIGIN: {Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}
       Layers: {Fn::If: [HasArchiverLayer, [{Ref: ArchiverLayerArn}], {Ref: AWS::NoValue}]}
       Code:
         ZipFile: |
@@ -333,7 +332,7 @@ Resources:
       Timeout: 15
       MemorySize: 256
       Environment:
-        Variables: {TABLE_NAME: {Ref: MetadataTable}, UPLOADS_BUCKET: {Ref: UploadsBucket}, ALLOWED_ORIGIN: {Fn::Sub: https://${CloudFrontDistribution.DomainName}}}
+        Variables: {TABLE_NAME: {Ref: MetadataTable}, UPLOADS_BUCKET: {Ref: UploadsBucket}, ALLOWED_ORIGIN: {Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}}
       Code:
         ZipFile: |
           const {DynamoDBClient}=require('@aws-sdk/client-dynamodb'); const {DynamoDBDocumentClient,GetCommand,UpdateCommand}=require('@aws-sdk/lib-dynamodb'); const {S3Client,GetObjectCommand}=require('@aws-sdk/client-s3'); const {getSignedUrl}=require('@aws-sdk/s3-request-presigner'); const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({})); const s3=new S3Client({}); const h=()=>({'Access-Control-Allow-Origin':process.env.ALLOWED_ORIGIN,'Access-Control-Allow-Methods':'GET,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Content-Type':'application/json'}); const out=(s,b)=>({statusCode:s,headers:h(),body:JSON.stringify(b)}); const fail=(s,c,m)=>out(s,{success:false,error:{code:c,message:m}}); const safe=v=>String(v||'download').replace(/[\r\n"\\/]/g,'_').slice(0,180)||'download';
@@ -347,7 +346,7 @@ Resources:
       Role: {Fn::GetAtt: [ListTransferRole, Arn]}
       Timeout: 10
       MemorySize: 256
-      Environment: {Variables: {TABLE_NAME: {Ref: MetadataTable}, ALLOWED_ORIGIN: {Fn::Sub: https://${CloudFrontDistribution.DomainName}}}}
+      Environment: {Variables: {TABLE_NAME: {Ref: MetadataTable}, ALLOWED_ORIGIN: {Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}}}
       Code:
         ZipFile: |
           const {DynamoDBClient}=require('@aws-sdk/client-dynamodb'); const {DynamoDBDocumentClient,QueryCommand}=require('@aws-sdk/lib-dynamodb'); const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({})); const h=()=>({'Access-Control-Allow-Origin':process.env.ALLOWED_ORIGIN,'Access-Control-Allow-Methods':'GET,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Content-Type':'application/json'}); const out=(s,b)=>({statusCode:s,headers:h(),body:JSON.stringify(b)}); const fail=(s,c,m)=>out(s,{success:false,error:{code:c,message:m}}); const decode=v=>{try{return JSON.parse(Buffer.from(v,'base64url').toString('utf8'));}catch(_){return null;}};
@@ -361,7 +360,7 @@ Resources:
       Role: {Fn::GetAtt: [DeleteTransferRole, Arn]}
       Timeout: 15
       MemorySize: 256
-      Environment: {Variables: {TABLE_NAME: {Ref: MetadataTable}, UPLOADS_BUCKET: {Ref: UploadsBucket}, ALLOWED_ORIGIN: {Fn::Sub: https://${CloudFrontDistribution.DomainName}}}}
+      Environment: {Variables: {TABLE_NAME: {Ref: MetadataTable}, UPLOADS_BUCKET: {Ref: UploadsBucket}, ALLOWED_ORIGIN: {Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}}}
       Code:
         ZipFile: |
           const {DynamoDBClient}=require('@aws-sdk/client-dynamodb'); const {DynamoDBDocumentClient,GetCommand,DeleteCommand}=require('@aws-sdk/lib-dynamodb'); const {S3Client,DeleteObjectCommand}=require('@aws-sdk/client-s3'); const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({})); const s3=new S3Client({}); const h=()=>({'Access-Control-Allow-Origin':process.env.ALLOWED_ORIGIN,'Access-Control-Allow-Methods':'DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Content-Type':'application/json'}); const out=(s,b)=>({statusCode:s,headers:h(),body:JSON.stringify(b)}); const fail=(s,c,m)=>out(s,{success:false,error:{code:c,message:m}});
@@ -379,8 +378,8 @@ Resources:
         Variables:
           SES_SOURCE_EMAIL: {Ref: SesSourceEmail}
           TABLE_NAME: {Ref: MetadataTable}
-          FRONTEND_BASE_URL: {Fn::Sub: https://${CloudFrontDistribution.DomainName}}
-          ALLOWED_ORIGIN: {Fn::Sub: https://${CloudFrontDistribution.DomainName}}
+          FRONTEND_BASE_URL: {Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}
+          ALLOWED_ORIGIN: {Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}
       Code:
         ZipFile: |
           const {SESClient,SendEmailCommand}=require('@aws-sdk/client-ses'); const {DynamoDBClient}=require('@aws-sdk/client-dynamodb'); const {DynamoDBDocumentClient,GetCommand}=require('@aws-sdk/lib-dynamodb'); const ses=new SESClient({}); const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({})); const h=()=>({'Access-Control-Allow-Origin':process.env.ALLOWED_ORIGIN,'Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Content-Type':'application/json'}); const out=(s,b)=>({statusCode:s,headers:h(),body:JSON.stringify(b)}); const fail=(s,c,m)=>out(s,{success:false,error:{code:c,message:m}}); const email=/^[^\s@]+@[^\s@]+\.[^\s@]+$/; const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -400,7 +399,7 @@ Resources:
       ResourceId: {Ref: BatchResource}
       HttpMethod: POST
       AuthorizationType: NONE
-      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BatchCreateFunction.Arn}/invocations}}
+      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BatchCreateFunction.Arn}/invocations'}}
   BatchOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -426,7 +425,7 @@ Resources:
       ResourceId: {Ref: BatchCompleteResource}
       HttpMethod: POST
       AuthorizationType: NONE
-      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BatchCompleteFunction.Arn}/invocations}}
+      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BatchCompleteFunction.Arn}/invocations'}}
   BatchCompleteOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -452,7 +451,7 @@ Resources:
       ResourceId: {Ref: TransferIdResource}
       HttpMethod: GET
       AuthorizationType: NONE
-      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetTransferFunction.Arn}/invocations}}
+      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetTransferFunction.Arn}/invocations'}}
   TransferOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -478,7 +477,7 @@ Resources:
       HttpMethod: DELETE
       AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: {Ref: CognitoAuthorizer}
-      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteTransferFunction.Arn}/invocations}}
+      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DeleteTransferFunction.Arn}/invocations'}}
 
   UserTransfersGetMethod:
     Type: AWS::ApiGateway::Method
@@ -488,7 +487,7 @@ Resources:
       HttpMethod: GET
       AuthorizationType: COGNITO_USER_POOLS
       AuthorizerId: {Ref: CognitoAuthorizer}
-      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListTransfersFunction.Arn}/invocations}}
+      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListTransfersFunction.Arn}/invocations'}}
   UserTransfersOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -514,7 +513,7 @@ Resources:
       ResourceId: {Ref: SendEmailResource}
       HttpMethod: POST
       AuthorizationType: NONE
-      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendEmailFunction.Arn}/invocations}}
+      Integration: {Type: AWS_PROXY, IntegrationHttpMethod: POST, Uri: {Fn::Sub: 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendEmailFunction.Arn}/invocations'}}
   SendEmailOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -565,9 +564,12 @@ Resources:
       MethodSettings: [{ResourcePath: '/*', HttpMethod: '*', ThrottlingBurstLimit: 50, ThrottlingRateLimit: 25}]
 
 Outputs:
-  CloudFrontURL: {Description: CloudDrop frontend URL., Value: {Fn::Sub: https://${CloudFrontDistribution.DomainName}}}
-  ApiGatewayURL: {Description: CloudDrop API base URL., Value: {Fn::Sub: https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}}
+  CloudFrontURL: {Description: CloudDrop frontend URL., Value: {Fn::Sub: 'https://${CloudFrontDistribution.DomainName}'}}
+  ApiGatewayURL: {Description: CloudDrop API base URL., Value: {Fn::Sub: 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'}}
   CognitoUserPoolId: {Description: Cognito user pool ID., Value: {Ref: CognitoUserPool}}
   CognitoClientId: {Description: Cognito browser client ID., Value: {Ref: CognitoUserPoolClient}}
-  CognitoDomain: {Description: Cognito hosted UI domain., Value: {Fn::Sub: clouddrop-${AWS::AccountId}-${Environment}.auth.${AWS::Region}.amazoncognito.com}}
+  CognitoDomain: {Description: Cognito hosted UI domain., Value: {Fn::Sub: 'clouddrop-${AWS::AccountId}-${Environment}.auth.${AWS::Region}.amazoncognito.com'}}
   EmailSharingEnabled: {Description: Whether SES email sharing is enabled., Value: {Fn::If: [HasSesSource, 'true', 'false']}}
+
+
+
