@@ -58,26 +58,8 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Validate CloudFormation with AWS
         run: aws cloudformation validate-template --template-body file://infrastructure/cfn/main.yaml --region "$AWS_REGION"
-      - name: Deploy CloudFormation
-        run: |
-          aws cloudformation deploy --template-file infrastructure/cfn/main.yaml --stack-name "$STACK_NAME" --parameter-overrides Environment="$ENVIRONMENT" --capabilities CAPABILITY_IAM
-      - name: Generate deployment config
-        run: |
-          API_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayURL`].OutputValue' --output text)
-          CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CognitoClientId`].OutputValue' --output text)
-          USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CognitoUserPoolId`].OutputValue' --output text)
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          test -n "$API_URL" && test "$API_URL" != "None"
-          test -n "$CLIENT_ID" && test "$CLIENT_ID" != "None"
-          test -n "$USER_POOL_ID" && test "$USER_POOL_ID" != "None"
-          printf 'window.CLOUDDROP_CONFIG = { apiBase: "%s", region: "%s", cognitoClientId: "%s", cognitoUserPoolId: "%s", cognitoDomain: "clouddrop-%s-%s.auth.%s.amazoncognito.com" };\n' "$API_URL" "$AWS_REGION" "$CLIENT_ID" "$USER_POOL_ID" "$ACCOUNT_ID" "$ENVIRONMENT" "$AWS_REGION" > frontend/js/config.js
-      - name: Sync frontend
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          BUCKET="clouddrop-frontend-${ENVIRONMENT}-${ACCOUNT_ID}"
-          aws s3 sync frontend/ "s3://$BUCKET" --delete
-      - name: Invalidate CloudFront
-        run: |
-          DIST_ID=$(aws cloudformation describe-stack-resource --stack-name "$STACK_NAME" --logical-resource-id CloudFrontDistribution --query StackResourceDetail.PhysicalResourceId --output text)
-          test -n "$DIST_ID" && test "$DIST_ID" != "None"
-          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
+      - name: Deploy CloudDrop
+        env:
+          ARCHIVER_LAYER_ARN: ${{ secrets.ARCHIVER_LAYER_ARN }}
+          SES_SOURCE_EMAIL: ${{ secrets.SES_SOURCE_EMAIL }}
+        run: ./scripts/deploy.sh
