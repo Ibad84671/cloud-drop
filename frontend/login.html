@@ -1,38 +1,11 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Log In — CloudDrop</title>
-  <link rel="stylesheet" href="/css/style.css" />
-</head>
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Sign in to manage your CloudDrop transfers"><title>Log in — CloudDrop</title><link rel="stylesheet" href="/css/style.css"></head>
 <body>
-  <header>
-    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
-    <nav><div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div></nav>
-  </header>
-  <main class="auth-container glass">
-    <h2>Welcome Back</h2>
-    <form id="login-form">
-      <label for="email">Email</label>
-      <input type="email" id="email" placeholder="you@example.com" required />
-      <label for="password">Password</label>
-      <input type="password" id="password" placeholder="••••••••" required />
-      <button type="submit">Log In</button>
-    </form>
-    <p style="text-align:center;margin-top:1rem;">
-      Don't have an account? <a href="/signup.html" style="color:var(--accent);">Sign Up</a>
-    </p>
-  </main>
-  <script src="/js/theme.js"></script>
-  <script>
-    const COGNITO_DOMAIN = 'clouddrop-502263855269-dev';
-    const CLIENT_ID = '5rp8tss9iu3s1jb4p5qdljog2e';
-    const REDIRECT_URI = window.location.origin + '/dashboard.html';
-    document.getElementById('login-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      window.location.href = `https://${COGNITO_DOMAIN}.auth.us-east-1.amazoncognito.com/login?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
-    });
+  <header class="site-header"><a class="brand" href="/" aria-label="CloudDrop home"><span class="brand-mark">C</span><span>CloudDrop</span></a><button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme">◐</button></header>
+  <main class="container page-shell"><section class="auth-container" style="background:var(--surface);border-color:var(--line);box-shadow:var(--shadow)"><span class="eyebrow">OPTIONAL ACCOUNT</span><h2>Welcome back.</h2><p style="color:var(--muted);text-align:center;margin-bottom:20px">Sign in to manage transfers. Guest sharing still works without an account.</p><button id="login-btn" class="btn btn-primary" style="width:100%" type="button">Continue with CloudDrop</button><p style="text-align:center;margin-top:16px;color:var(--muted);font-size:13px">New here? <a href="/signup.html" style="color:var(--accent)">Create an account</a></p></section></main>
+  <script src="/js/config.js"></script><script src="/js/theme.js"></script><script>
+    document.getElementById('login-btn').addEventListener('click',()=>{const c=window.CLOUDDROP_CONFIG||{};if(!c.cognitoDomain||!c.cognitoClientId){alert('Authentication is not configured for this deployment.');return;}const redirect=window.location.origin+'/dashboard.html';window.location.href=`https://${c.cognitoDomain}/login?client_id=${encodeURIComponent(c.cognitoClientId)}&response_type=token&redirect_uri=${encodeURIComponent(redirect)}`;});
   </script>
 </body>
 </html>
