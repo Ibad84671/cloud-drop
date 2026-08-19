@@ -1,79 +1,14 @@
-const { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-const archiver = require('archiver');
-
-exports.handler = async (event) => {
-  try {
-    const s3 = new S3Client({});
-    const ddbDoc = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-    const BUCKET = process.env.UPLOADS_BUCKET;
-    const TABLE = process.env.TABLE_NAME;
-
-    const transferId = event.pathParameters.id;
-    const prefix = `uploads/${transferId}/`;
-
-    const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
-    const objects = listed.Contents || [];
-    if (objects.length === 0) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'No files found' }) };
-    }
-
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    const chunks = [];
-    archive.on('data', (chunk) => chunks.push(chunk));
-    archive.on('error', (err) => { throw err; });
-
-    for (const obj of objects) {
-      const key = obj.Key;
-      const fileName = key.replace(prefix, '');
-      const response = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
-      archive.append(response.Body, { name: fileName });
-    }
-
-    await archive.finalize();
-    const zipBuffer = Buffer.concat(chunks);
-    const totalSize = zipBuffer.length;
-
-    const zipKey = `zips/${transferId}.zip`;
-    await s3.send(new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: zipKey,
-      Body: zipBuffer,
-      ContentType: 'application/zip'
-    }));
-
-    await ddbDoc.send(new UpdateCommand({
-      TableName: TABLE,
-      Key: { transferId },
-      UpdateExpression: 'SET #status = :ready, zipKey = :zipKey, totalSize = :totalSize',
-      ExpressionAttributeNames: { '#status': 'status' },
-      ExpressionAttributeValues: {
-        ':ready': 'ready',
-        ':zipKey': zipKey,
-        ':totalSize': totalSize
-      }
-    }));
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
-      },
-      body: JSON.stringify({ message: 'Zip created successfully' })
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
-      },
-      body: JSON.stringify({ error: error.message })
-    };
-  }
-};
+const {S3Client,HeadObjectCommand,GetObjectCommand,CreateMultipartUploadCommand,UploadPartCommand,CompleteMultipartUploadCommand,AbortMultipartUploadCommand}=require('@aws-sdk/client-s3');
+const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
+const {DynamoDBDocumentClient,GetCommand,UpdateCommand}=require('@aws-sdk/lib-dynamodb');
+const s3=new S3Client({});const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xedb88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
+const crc32=(buf,crc=0xffffffff)=>{let c=crc>>>0;for(const b of buf)c=crcTable[(c^b)&255]^(c>>>8);return c>>>0;};
+const u16=n=>{const b=Buffer.allocUnsafe(2);b.writeUInt16LE(n>>>0,0);return b;};const u32=n=>{const b=Buffer.allocUnsafe(4);b.writeUInt32LE(n>>>0,0);return b;};
+const localHeader=name=>Buffer.concat([u32(0x04034b50),u16(20),u16(0x808),u16(0),u16(0),u16(0),u32(0),u32(0),u32(0),u16(Buffer.byteLength(name)),u16(0),Buffer.from(name)]);
+const descriptor=(crc,size)=>Buffer.concat([u32(0x08074b50),u32(crc),u32(size),u32(size)]);
+const centralHeader=(name,crc,size,offset)=>Buffer.concat([u32(0x02014b50),u16(20),u16(20),u16(0x808),u16(0),u16(0),u32(crc),u32(size),u32(size),u16(Buffer.byteLength(name)),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),Buffer.from(name)]);
+class PartWriter{constructor(s3,bucket,key,uploadId){this.s3=s3;this.bucket=bucket;this.key=key;this.uploadId=uploadId;this.partSize=8*1024*1024;this.buffers=[];this.length=0;this.part=0;this.parts=[];}async write(buf){let off=0;while(off<buf.length){const take=Math.min(this.partSize-this.length,buf.length-off);this.buffers.push(buf.subarray(off,off+take));this.length+=take;off+=take;if(this.length===this.partSize)await this.flush();}}async flush(){if(!this.length)return;const body=Buffer.concat(this.buffers,this.length);this.buffers=[];this.length=0;const partNumber=++this.part;const r=await this.s3.send(new UploadPartCommand({Bucket:this.bucket,Key:this.key,UploadId:this.uploadId,PartNumber:partNumber,Body:body}));this.parts.push({PartNumber:partNumber,ETag:r.ETag});}async finish(){await this.flush();return this.parts;}}
+const safeName=n=>String(n||'file').replace(/[\\\r\n\0]/g,'_').replace(/^\/+/, '').replace(/\.\./g,'_').slice(0,255)||'file';
+async function processTransfer(transferId){let uploadId;const bucket=process.env.UPLOADS_BUCKET;try{const result=await ddb.send(new GetCommand({TableName:process.env.TABLE_NAME,Key:{transferId}}));const item=result.Item;if(!item||!item.isBatch)return;if(item.status==='ready')return;if(item.expiresAt&&Date.now()>=Date.parse(item.expiresAt)){await ddb.send(new UpdateCommand({TableName:process.env.TABLE_NAME,Key:{transferId},UpdateExpression:'SET #status=:expired',ExpressionAttributeNames:{'#status':'status'},ExpressionAttributeValues:{':expired':'expired'}}));return;}const files=item.files||[];if(!files.length||files.length>50)throw new Error('Invalid batch metadata');for(const f of files){const h=await s3.send(new HeadObjectCommand({Bucket,Key:f.objectKey}));if(Number(h.ContentLength)!==Number(f.fileSize))throw new Error(`Uploaded size mismatch for ${f.fileName}`);}const zipKey=`zips/${transferId}.zip`;const mpu=await s3.send(new CreateMultipartUploadCommand({Bucket,Key:zipKey,ContentType:'application/zip'}));uploadId=mpu.UploadId;const writer=new PartWriter(s3,bucket,zipKey,uploadId);const central=[];let offset=0;for(const f of files){const name=safeName(f.fileName);const lh=localHeader(name);await writer.write(lh);const localOffset=offset;offset+=lh.length;let crc=0xffffffff;let size=0;const body=(await s3.send(new GetObjectCommand({Bucket,Key:f.objectKey}))).Body;for await(const chunk of body){const buf=Buffer.from(chunk);crc=crc32(buf,crc);size+=buf.length;await writer.write(buf);offset+=buf.length;}crc=(crc^0xffffffff)>>>0;const dd=descriptor(crc,size);await writer.write(dd);offset+=dd.length;central.push({name,crc,size,localOffset});}const centralStart=offset;for(const c of central){const ch=centralHeader(c.name,c.crc,c.size,c.localOffset);await writer.write(ch);offset+=ch.length;}const centralSize=offset-centralStart;const end=Buffer.concat([u32(0x06054b50),u16(0),u16(0),u16(central.length),u16(central.length),u32(centralSize),u32(centralStart),u16(0)]);await writer.write(end);offset+=end.length;const parts=await writer.finish();await s3.send(new CompleteMultipartUploadCommand({Bucket,Key:zipKey,UploadId:uploadId,MultipartUpload:{Parts:parts}}));uploadId=undefined;await ddb.send(new UpdateCommand({TableName:process.env.TABLE_NAME,Key:{transferId},UpdateExpression:'SET #status=:ready, zipKey=:zipKey, zipFileName=:zipFileName, totalSize=:totalSize',ConditionExpression:'#status=:processing',ExpressionAttributeNames:{'#status':'status'},ExpressionAttributeValues:{':ready':'ready',':processing':'processing',':zipKey':zipKey,':zipFileName':`clouddrop-${transferId}.zip`,':totalSize':offset}}));}catch(error){console.error('batch-complete-worker',error);if(uploadId)await s3.send(new AbortMultipartUploadCommand({Bucket,Key:`zips/${transferId}.zip`,UploadId:uploadId})).catch(()=>{});throw error;}}
+exports.handler=async event=>{for(const record of event.Records||[]){const body=JSON.parse(record.body||'{}');try{await processTransfer(body.transferId);}catch(error){const attempts=Number(record.attributes?.ApproximateReceiveCount||1);if(attempts>=3){await ddb.send(new UpdateCommand({TableName:process.env.TABLE_NAME,Key:{transferId:body.transferId},UpdateExpression:'SET #status=:failed',ExpressionAttributeNames:{'#status':'status'},ExpressionAttributeValues:{':failed':'failed'}})).catch(()=>{});continue;}throw error;}}};
