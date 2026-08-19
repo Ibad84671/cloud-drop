@@ -1,45 +1,7 @@
-const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
-
-const ses = new SESClient({});
-
-exports.handler = async (event) => {
-  try {
-    const body = JSON.parse(event.body);
-    const { to, link, fileName } = body;
-
-    const params = {
-      Source: 'ibad84671@gmail.com', // CHANGE to a verified email in SES
-      Destination: { ToAddresses: [to] },
-      Message: {
-        Subject: { Data: `📎 ${fileName} shared via CloudDrop` },
-        Body: {
-          Text: { Data: `Download your file: ${link}` },
-          Html: { Data: `<p>Your file <strong>${fileName}</strong> is ready to download.</p><p><a href="${link}">Download Now</a></p><p>This link expires in 7 days.</p>` }
-        }
-      }
-    };
-
-    await ses.send(new SendEmailCommand(params));
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
-      },
-      body: JSON.stringify({ message: 'Email sent successfully' })
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
-      },
-      body: JSON.stringify({ error: error.message })
-    };
-  }
-};
+const {SESClient,SendEmailCommand}=require('@aws-sdk/client-ses');
+const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
+const {DynamoDBDocumentClient,GetCommand,UpdateCommand}=require('@aws-sdk/lib-dynamodb');
+const ses=new SESClient({});const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization'};const out=(status,body)=>({statusCode:status,headers:{...cors,'Content-Type':'application/json'},body:JSON.stringify(body)});
+const validEmail=v=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)&&v.length<=320;const escapeHtml=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+exports.handler=async event=>{try{if(event.httpMethod==='OPTIONS')return out(204,'');const body=JSON.parse(event.body||'{}');const to=String(body.to||'').trim();const transferId=String(body.transferId||'').trim();if(!process.env.FROM_EMAIL)return out(503,{error:'Email sharing is not configured'});if(!validEmail(to)||!transferId)return out(400,{error:'Invalid recipient or transfer'});const transfer=await ddb.send(new GetCommand({TableName:process.env.TABLE_NAME,Key:{transferId}}));const item=transfer.Item;if(!item||item.status!=='ready')return out(404,{error:'Transfer is not ready'});if(item.expiresAt&&Date.now()>=Date.parse(item.expiresAt))return out(410,{error:'Transfer expired'});const fileName=(item.isBatch?(item.zipFileName||'files.zip'):(item.originalFileName||'file')).slice(0,255);await ddb.send(new UpdateCommand({TableName:process.env.TABLE_NAME,Key:{transferId},UpdateExpression:'SET emailCount=if_not_exists(emailCount,:zero)+:one',ConditionExpression:'attribute_not_exists(emailCount) OR emailCount < :max',ExpressionAttributeValues:{':zero':0,':one':1,':max':3}}));const link=`${process.env.FRONTEND_ORIGIN}/t/${encodeURIComponent(transferId)}`;await ses.send(new SendEmailCommand({Source:process.env.FROM_EMAIL,Destination:{ToAddresses:[to]},Message:{Subject:{Data:`${fileName} shared via CloudDrop`,Charset:'UTF-8'},Body:{Text:{Data:`Download ${fileName}: ${link}`},Html:{Data:`<p>Your file <strong>${escapeHtml(fileName)}</strong> is ready.</p><p><a href="${link}">Download Now</a></p><p>This link expires in 7 days.</p>`}}}}));return out(200,{message:'Email sent successfully'});}catch(error){console.error('send-email',error);if(error.name==='ConditionalCheckFailedException')return out(429,{error:'Email limit reached for this transfer'});return out(500,{error:'Email could not be sent'});}};
