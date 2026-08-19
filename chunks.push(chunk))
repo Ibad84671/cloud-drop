@@ -1,1 +1,0 @@
-    archive.on('data', (chunk) =;
