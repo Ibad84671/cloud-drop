@@ -1,20 +1,22 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-We actively support the latest deployed version of CloudDrop. Security updates are applied automatically via IaC.
+The latest version deployed from `main` is the supported version.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-If you discover a security vulnerability, please **do not** open a public issue.
+Please report security vulnerabilities privately through the repository's configured GitHub security contact or GitHub Security Advisories. Do not publish exploitable details in a public issue.
 
-Email: [your-email@example.com] (Replace with your actual email)
+## Security architecture
 
-We will respond within 48 hours and work to resolve the issue.
+CloudDrop uses private S3 buckets, presigned URLs, Cognito authentication for protected operations, least-privilege Lambda execution roles, API Gateway throttling, SQS-backed asynchronous processing, and CloudWatch logging.
 
-## Security Best Practices
+The frontend bucket is accessed through CloudFront Origin Access Control. Upload objects are written directly to S3 using short-lived presigned URLs; Lambda does not proxy user file bytes.
 
-- The application uses **least-privilege IAM** policies.
-- All S3 buckets are **private** and accessed via **CloudFront OAI**.
-- File uploads use **presigned URLs** (valid for 15 minutes).
-- User authentication is handled via **AWS Cognito** (not custom).
+## Operational notes
+
+- Configure GitHub Actions with AWS OIDC rather than long-lived IAM user access keys.
+- Keep the SES sender address verified and restricted to the intended AWS account/region.
+- Review API Gateway, Lambda, S3, DynamoDB, and SES metrics for abuse or unexpected spend.
+- Treat presigned URLs as bearer credentials and never log or publish them.
