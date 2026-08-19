@@ -4,6 +4,10 @@
 
 CloudDrop is a guest-first, privacy-focused serverless file-transfer application inspired by WeTransfer and TransferNow. It lets anyone create a time-limited transfer without an account, uploads file bytes directly from the browser to private Amazon S3 with presigned URLs, and gives recipients short-lived download access. Authentication is optional and exists for transfer management.
 
+**Live demo:** https://d31ipw1qs2uo7j.cloudfront.net/
+
+**GitHub:** https://github.com/Ibad84671/cloud-drop
+
 [![License](https://img.shields.io/badge/license-MIT-111827.svg)](LICENSE.txt)
 [![AWS](https://img.shields.io/badge/AWS-serverless-FF9900.svg)](https://aws.amazon.com/serverless/)
 [![Frontend](https://img.shields.io/badge/frontend-Vanilla%20JavaScript-F7DF1E.svg)](frontend/)
@@ -16,9 +20,9 @@ CloudDrop is a guest-first, privacy-focused serverless file-transfer application
 - **Private by default:** upload storage is not public.
 - **Direct transfer:** browsers upload directly to S3 instead of sending file bytes through Lambda.
 - **Short-lived access:** upload URLs expire after 15 minutes; download URLs expire after 5 minutes.
-- **Time-limited transfers:** transfer metadata expires after 7 days and S3 objects are lifecycle-cleaned after 8 days.
+- **Time-limited transfers:** transfer metadata expires after 7 days and S3 objects lifecycle-clean after 8 days.
 - **Optional accounts:** Cognito protects management operations without becoming a barrier to sharing.
-- **Cost conscious:** no EC2, RDS, ECS, EKS, NAT Gateway, or paid third-party monitoring is required.
+- **Cost conscious:** no EC2, RDS, ECS, EKS, NAT Gateway, or paid third-party monitoring platform is required.
 
 ## Features
 
@@ -30,7 +34,7 @@ CloudDrop is a guest-first, privacy-focused serverless file-transfer application
 - Server-side filename, MIME-type, count, and size validation.
 - Direct browser-to-S3 presigned uploads.
 - Upload completion verifies the actual S3 object size and content type before a transfer becomes ready.
-- Multi-file transfers are finalized into a ZIP using the configured Lambda archiver layer.
+- Multi-file transfers are finalized into a ZIP using the configured Lambda `archiver` dependency/layer path.
 - Shareable `/t/{transferId}` links.
 
 ### Recipient
@@ -88,6 +92,21 @@ flowchart LR
 ### Why this architecture?
 
 CloudDrop keeps the expensive path—the file bytes—out of Lambda. Lambda handles metadata, authorization, validation, presigned URL generation, and transfer state. S3 handles the actual file storage and delivery. DynamoDB provides low-cost metadata storage with TTL cleanup. CloudFront serves the static frontend and rewrites transfer routes to `t.html`.
+
+## Verified end-to-end smoke test
+
+The deployed AWS stack has been manually verified through the real API path, not only through local code inspection.
+
+The successful test sequence was:
+
+1. `POST /batch` created a transfer and returned a presigned S3 upload URL.
+2. A six-byte `test.txt` file was uploaded directly to the private S3 object URL.
+3. `POST /batch/{id}/complete` returned `200 OK` with `status: ready`.
+4. `GET /transfer/{id}` returned a five-minute presigned ZIP download URL.
+5. The ZIP was downloaded successfully and extracted successfully.
+6. The extracted archive contained the original six-byte `test.txt` file.
+
+The test also caught and fixed two real deployment issues: the batch-complete Lambda initially lacked its `archiver` runtime dependency, and the upload test initially used an eight-byte Windows `echo` file while declaring six bytes. The deployed Lambda was subsequently repackaged with `archiver`, updated successfully, and the exact-size upload path passed.
 
 ## Request flow
 
@@ -193,33 +212,31 @@ CloudDrop treats the browser as untrusted.
 | DynamoDB | Transfer metadata, ownership index, TTL | On-demand |
 | Cognito | Optional user authentication | Managed authentication |
 | SES | Optional email sharing | Only used when configured |
-| Event-free S3 lifecycle + DynamoDB TTL | Cleanup | No extra always-on service |
-
-No NAT Gateway, RDS, EC2, ECS, EKS, ALB, OpenSearch, Redis, or paid monitoring platform is required by the current architecture.
+| S3 lifecycle + DynamoDB TTL | Cleanup | No extra always-on service |
 
 ## Repository structure
 
 ```text
 cloud-drop/
-├── .github/workflows/deploy.yml     # validation + OIDC deployment
-├── backend/functions/               # Lambda source mirrors
+├── .github/workflows/deploy.yml
+├── backend/functions/
 │   ├── batch-create/
 │   ├── batch-complete/
 │   ├── get-transfer/
 │   ├── list-transfers/
 │   ├── delete-transfer/
 │   └── send-email/
-├── docs/adr/                        # architectural decisions
+├── docs/adr/
 ├── frontend/
-│   ├── index.html                   # guest upload experience
-│   ├── t.html                       # recipient transfer page
-│   ├── login.html                   # Cognito PKCE entry point
-│   ├── auth-callback.html            # OAuth code exchange
+│   ├── index.html
+│   ├── t.html
+│   ├── login.html
+│   ├── auth-callback.html
 │   ├── signup.html
 │   ├── dashboard.html
 │   ├── css/
 │   └── js/
-├── infrastructure/cfn/main.yaml    # single deployment source of truth
+├── infrastructure/cfn/main.yaml
 ├── scripts/
 │   ├── deploy.sh
 │   └── destroy.sh
@@ -232,7 +249,7 @@ cloud-drop/
 └── README.md
 ```
 
-The CloudFormation template is the deployment source of truth. The files under `backend/functions/` are maintained source mirrors for readability and review; the current stack packages the handlers inline in CloudFormation.
+The CloudFormation template is the deployment source of truth. Backend function directories are maintained source mirrors for readability and review. Generated Lambda ZIP packages and local dependency directories are intentionally not committed.
 
 ## Deployment
 
@@ -240,7 +257,7 @@ The CloudFormation template is the deployment source of truth. The files under `
 
 - AWS CLI configured for the intended account and region.
 - Node.js.
-- A Lambda layer containing the `archiver` package for ZIP finalization.
+- A compatible `archiver` Lambda dependency/layer for ZIP finalization.
 - A verified SES sender only if email sharing is required.
 
 ### Validate first
@@ -254,8 +271,6 @@ aws cloudformation validate-template --template-body file://infrastructure/cfn/m
 
 ### Deploy
 
-The repository's deployment helper intentionally refuses to deploy without the archiver layer because multi-file sharing is a core feature.
-
 ```bash
 export AWS_REGION=us-east-1
 export STACK_NAME=clouddrop-dev
@@ -267,7 +282,7 @@ export ARCHIVER_LAYER_ARN='arn:aws:lambda:us-east-1:<ACCOUNT_ID>:layer:clouddrop
 ./scripts/deploy.sh
 ```
 
-The script obtains API Gateway, Cognito, CloudFront, and email-sharing configuration from CloudFormation outputs and generates `frontend/js/config.js` before syncing the frontend.
+The deployment helper obtains API Gateway, Cognito, CloudFront, and email-sharing configuration from CloudFormation outputs and generates `frontend/js/config.js` before syncing the frontend. The checked-in `frontend/js/config.js` remains a safe empty configuration rather than containing environment-specific credentials or generated deployment state.
 
 ### GitHub Actions
 
@@ -287,7 +302,7 @@ For a clean development teardown:
 ./scripts/destroy.sh
 ```
 
-The destroy helper empties the two managed S3 buckets before deleting the CloudFormation stack. The current buckets do **not** use versioning, avoiding the version/delete-marker trap that previously prevented clean stack deletion.
+The destroy helper empties the two managed S3 buckets before deleting the CloudFormation stack. The current buckets do not use versioning, avoiding the version/delete-marker trap that can prevent clean stack deletion.
 
 ## Testing
 
@@ -296,14 +311,14 @@ The repository smoke suite checks:
 - JavaScript syntax across backend/frontend source files.
 - HTML doctype and absence of remote script dependencies.
 - Merge-conflict markers.
-- Cognito configuration and the absence of the previous required-custom-attribute pattern.
+- Cognito configuration and absence of the previous required-custom-attribute pattern.
 - Cognito-protected API methods.
 - API throttling.
 - OIDC deployment configuration.
 - Required archiver deployment configuration.
 - Removal of known generated artifacts.
 
-The CI workflow additionally runs `cfn-lint` and AWS `cloudformation validate-template` before deployment.
+CI additionally runs `cfn-lint` and AWS `cloudformation validate-template` before deployment.
 
 > A repository-level test is not a substitute for an actual AWS deployment test. Guest upload, ZIP finalization, Cognito login, recipient download, SES sending, and CloudFront behavior should be smoke-tested after deployment in the target AWS account.
 
@@ -317,14 +332,14 @@ The CI workflow additionally runs `cfn-lint` and AWS `cloudformation validate-te
 
 CloudDrop deliberately chooses serverless, request-based AWS services and avoids infrastructure that introduces a fixed monthly floor. The application does not need a NAT Gateway, relational database, container cluster, or always-on compute.
 
-The ZIP finalization Lambda is the one intentionally heavier path: it can use up to 10 GB of ephemeral storage and a configured archiver layer so multi-file transfers can be assembled without buffering the complete archive in Lambda memory.
+The ZIP finalization Lambda is the intentionally heavier path: it can use up to 10 GB of ephemeral storage and uses the configured `archiver` dependency/layer so multi-file transfers can be assembled without buffering the complete archive in Lambda memory.
 
 ## Known operational requirements
 
-1. The archiver Lambda layer must contain a compatible `archiver` package for Node.js 20.
+1. The batch-complete Lambda must have a compatible `archiver` dependency available at runtime.
 2. SES email sharing requires a verified sender and an account/region permitted to send email.
 3. GitHub Actions deployment requires an AWS OIDC trust relationship for `AWS_DEPLOY_ROLE_ARN`.
-4. CloudFront and Cognito are created during the first deployment, so runtime configuration must be generated from stack outputs rather than hardcoded.
+4. CloudFront and Cognito are created during deployment, so runtime configuration should be generated from stack outputs rather than hardcoded.
 
 ## License
 
