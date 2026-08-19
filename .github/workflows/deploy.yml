@@ -63,10 +63,12 @@ jobs:
         run: |
           API_URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayURL`].OutputValue' --output text)
           CLIENT_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CognitoClientId`].OutputValue' --output text)
+          USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`CognitoUserPoolId`].OutputValue' --output text)
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           test -n "$API_URL" && test "$API_URL" != "None"
           test -n "$CLIENT_ID" && test "$CLIENT_ID" != "None"
-          printf 'window.CLOUDDROP_CONFIG = { apiBase: "%s", cognitoClientId: "%s", cognitoDomain: "clouddrop-%s-%s.auth.%s.amazoncognito.com" };\n' "$API_URL" "$CLIENT_ID" "$ACCOUNT_ID" "$ENVIRONMENT" "$AWS_REGION" > frontend/js/config.js
+          test -n "$USER_POOL_ID" && test "$USER_POOL_ID" != "None"
+          printf 'window.CLOUDDROP_CONFIG = { apiBase: "%s", region: "%s", cognitoClientId: "%s", cognitoUserPoolId: "%s", cognitoDomain: "clouddrop-%s-%s.auth.%s.amazoncognito.com" };\n' "$API_URL" "$AWS_REGION" "$CLIENT_ID" "$USER_POOL_ID" "$ACCOUNT_ID" "$ENVIRONMENT" "$AWS_REGION" > frontend/js/config.js
       - name: Sync frontend
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
