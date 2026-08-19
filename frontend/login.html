@@ -1,38 +1,24 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Log In — CloudDrop</title>
-  <link rel="stylesheet" href="/css/style.css" />
-</head>
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Log In — CloudDrop</title><link rel="stylesheet" href="/css/style.css" /></head>
 <body>
-  <header>
-    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
-    <nav><div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div></nav>
-  </header>
-  <main class="auth-container glass">
-    <h2>Welcome Back</h2>
-    <form id="login-form">
-      <label for="email">Email</label>
-      <input type="email" id="email" placeholder="you@example.com" required />
-      <label for="password">Password</label>
-      <input type="password" id="password" placeholder="••••••••" required />
-      <button type="submit">Log In</button>
-    </form>
-    <p style="text-align:center;margin-top:1rem;">
-      Don't have an account? <a href="/signup.html" style="color:var(--accent);">Sign Up</a>
-    </p>
-  </main>
-  <script src="/js/theme.js"></script>
-  <script>
-    const COGNITO_DOMAIN = 'clouddrop-502263855269-dev';
-    const CLIENT_ID = '5rp8tss9iu3s1jb4p5qdljog2e';
-    const REDIRECT_URI = window.location.origin + '/dashboard.html';
-    document.getElementById('login-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      window.location.href = `https://${COGNITO_DOMAIN}.auth.us-east-1.amazoncognito.com/login?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
-    });
-  </script>
-</body>
-</html>
+<header><div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div><nav><div class="theme-toggle" id="themeToggle" title="Toggle theme" role="button" tabindex="0">🌓</div></nav></header>
+<main class="auth-container glass">
+  <h2>Welcome Back</h2>
+  <form id="login-form" novalidate>
+    <label for="email">Email</label><input type="email" id="email" placeholder="you@example.com" autocomplete="email" required />
+    <label for="password">Password</label><input type="password" id="password" placeholder="Your password" autocomplete="current-password" required />
+    <button type="submit" id="login-btn">Log In</button><p id="login-message" role="status" style="margin-top:1rem;text-align:center;"></p>
+  </form>
+  <p style="text-align:center;margin-top:1rem;">Don't have an account? <a href="/signup.html" style="color:var(--accent);">Sign Up</a></p>
+</main>
+<script src="/js/config.js"></script><script src="/js/theme.js"></script>
+<script>
+(() => {
+  const config=window.CLOUDDROP_CONFIG||{}; const form=document.getElementById('login-form'); const button=document.getElementById('login-btn'); const message=document.getElementById('login-message');
+  const cognitoUrl=`https://cognito-idp.${encodeURIComponent(config.region||'us-east-1')}.amazonaws.com/`;
+  async function cognito(action,payload){const response=await fetch(cognitoUrl,{method:'POST',headers:{'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':`AWSCognitoIdentityProviderService.${action}`},body:JSON.stringify(payload)});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'Authentication failed.');return data;}
+  form.addEventListener('submit',async event=>{event.preventDefault();const email=document.getElementById('email').value.trim();const password=document.getElementById('password').value;if(!email||!password)return;if(!config.clientId){message.textContent='CloudDrop authentication is not configured.';return;}button.disabled=true;message.textContent='Signing in…';try{const data=await cognito('InitiateAuth',{AuthFlow:'USER_PASSWORD_AUTH',ClientId:config.clientId,AuthParameters:{USERNAME:email,PASSWORD:password}});if(data.ChallengeName)throw new Error(`Additional authentication is required: ${data.ChallengeName}`);sessionStorage.setItem('idToken',data.AuthenticationResult.IdToken);sessionStorage.setItem('accessToken',data.AuthenticationResult.AccessToken);if(data.AuthenticationResult.RefreshToken)sessionStorage.setItem('refreshToken',data.AuthenticationResult.RefreshToken);window.location.href='/dashboard.html';}catch(error){message.textContent=`❌ ${error.message}`;message.style.color='var(--danger)';}finally{button.disabled=false;}});
+})();
+</script>
+</body></html>
