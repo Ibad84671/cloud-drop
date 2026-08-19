@@ -1,0 +1,16 @@
+HTTP/1.1 200 OK
+x-amz-id-2: D50MzkLjs53V+XbVkae4CJm2/BXj3r0szJlyqyedeSgvFca9M4stxa4jaCg0CKV3LWx0pFbeJC0=
+x-amz-request-id: XQCJDBT67T8KDRY5
+Date: Wed, 19 Aug 2026 09:27:37 GMT
+Last-Modified: Wed, 19 Aug 2026 09:26:24 GMT
+x-amz-expiration: expiry-date="Sat, 19 Sep 2026 00:00:00 GMT", rule-id="ExpireAfter30Days"
+ETag: "4b033ffbcb8a768d159b0e1964c1303e"
+x-amz-server-side-encryption: AES256
+x-amz-version-id: ZvwHlI5D8WpEzo6Jqoa_6jftVkUGAJmT
+Content-Disposition: attachment; filename="undefined"
+Accept-Ranges: bytes
+Content-Type: binary/octet-stream
+Content-Length: 56
+Server: AmazonS3
+
+CloudDrop production upload test - 08/19/2026 14:55:34
