@@ -1,59 +1,11 @@
-const { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-
-
-const s3 = new S3Client({ requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' });
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const BUCKET = process.env.UPLOADS_BUCKET;
-const TABLE = process.env.TABLE_NAME;
-const MAX_ARCHIVE_BYTES = Number(process.env.MAX_ARCHIVE_BYTES || 2 * 1024 ** 3);
-const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,Authorization', 'Content-Type': 'application/json' };
-const response = (statusCode, body) => ({ statusCode, headers, body: JSON.stringify(body) });
-
-exports.handler = async (event) => {
-  const { default: archiver } = await import('archiver');
-  if (event?.requestContext?.http?.method === 'OPTIONS') return response(204, null);
-  const transferId = event?.pathParameters?.id;
-  if (!transferId || !/^[0-9a-f-]{36}$/i.test(transferId)) return response(400, { success: false, error: { code: 'INVALID_TRANSFER_ID', message: 'Invalid transfer ID.' } });
-
-  try {
-    const item = (await ddb.send(new GetCommand({ TableName: TABLE, Key: { transferId } }))).Item;
-    if (!item) return response(404, { success: false, error: { code: 'TRANSFER_NOT_FOUND', message: 'Transfer not found.' } });
-    if (item.expiresAt && Date.parse(item.expiresAt) <= Date.now()) return response(410, { success: false, error: { code: 'TRANSFER_EXPIRED', message: 'Transfer expired.' } });
-    if (!item.isBatch) return response(409, { success: false, error: { code: 'INVALID_TRANSFER_TYPE', message: 'This is not a batch transfer.' } });
-    if (item.status === 'ready' && item.zipKey) return response(200, { success: true, data: { transferId, status: 'ready' } });
-
-    const prefix = `uploads/${transferId}/`;
-    const listed = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix }));
-    const objects = (listed.Contents || []).filter(object => object.Key && object.Size > 0);
-    if (!objects.length) return response(409, { success: false, error: { code: 'UPLOADS_NOT_FOUND', message: 'No uploaded files were found.' } });
-    if (objects.some(object => object.Size > MAX_ARCHIVE_BYTES)) return response(413, { success: false, error: { code: 'FILE_TOO_LARGE', message: 'Archive exceeds the configured size limit.' } });
-
-    const chunks = [];
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    const archiveError = new Promise((_, reject) => archive.once('error', reject));
-    archive.on('data', chunk => chunks.push(chunk));
-
-    for (const object of objects) {
-      const key = object.Key;
-      const fileName = key.slice(prefix.length).replace(/[\\/]/g, '_').slice(0, 255) || 'file';
-      const responseObject = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
-      archive.append(responseObject.Body, { name: fileName });
-    }
-    await archive.finalize();
-    await Promise.race([archiveError, new Promise(resolve => archive.once('end', resolve))]);
-
-    const zipBuffer = Buffer.concat(chunks);
-    if (zipBuffer.length > MAX_ARCHIVE_BYTES) return response(413, { success: false, error: { code: 'ARCHIVE_TOO_LARGE', message: 'Generated archive exceeds the configured size limit.' } });
-    const zipKey = `zips/${transferId}.zip`;
-    await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: zipKey, Body: zipBuffer, ContentType: 'application/zip' }));
-
-    await ddb.send(new UpdateCommand({ TableName: TABLE, Key: { transferId }, UpdateExpression: 'SET #status = :ready, zipKey = :zipKey, totalSize = :totalSize, completedAt = :completedAt', ExpressionAttributeNames: { '#status': 'status' }, ExpressionAttributeValues: { ':ready': 'ready', ':zipKey': zipKey, ':totalSize': zipBuffer.length, ':completedAt': new Date().toISOString() }, ConditionExpression: '#status = :pending' }));
-    return response(200, { success: true, data: { transferId, status: 'ready' } });
-  } catch (error) {
-    console.error('batch-complete failed', { name: error.name });
-    if (error.name === 'ConditionalCheckFailedException') return response(200, { success: true, data: { transferId, status: 'ready' } });
-    return response(500, { success: false, error: { code: 'INTERNAL_ERROR', message: 'Unable to finalize transfer.' } });
-  }
-};
+const fs=require('fs');
+const path=require('path');
+const archiver=require('archiver');
+const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
+const {DynamoDBDocumentClient,GetCommand,UpdateCommand}=require('@aws-sdk/lib-dynamodb');
+const {S3Client,GetObjectCommand,PutObjectCommand,HeadObjectCommand}=require('@aws-sdk/client-s3');
+const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const s3=new S3Client({});
+const headers=()=>({'Access-Control-Allow-Origin':process.env.ALLOWED_ORIGIN,'Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Content-Type':'application/json'});
+const out=(s,b)=>({statusCode:s,headers:headers(),body:JSON.stringify(b)}),fail=(s,c,m)=>out(s,{success:false,error:{code:c,message:m}});
+exports.handler=async e=>{if(e?.requestContext?.http?.method==='OPTIONS')return out(204,null);const id=e?.pathParameters?.id;if(!id||!/^[0-9a-f-]{36}$/i.test(id))return fail(400,'INVALID_TRANSFER_ID','Invalid transfer ID.');const work=path.join('/tmp',`${id}.zip`);try{const item=(await ddb.send(new GetCommand({TableName:process.env.TABLE_NAME,Key:{transferId:id}}))).Item;if(!item)return fail(404,'TRANSFER_NOT_FOUND','Transfer not found.');if(item.expiresAt&&Date.parse(item.expiresAt)<=Date.now())return fail(410,'TRANSFER_EXPIRED','Transfer expired.');if(!item.isBatch)return fail(409,'INVALID_TRANSFER_TYPE','This is not a batch transfer.');if(item.status==='ready'&&item.zipKey)return out(200,{success:true,data:{transferId:id,status:'ready'}});if(!Array.isArray(item.files)||!item.files.length)return fail(409,'UPLOAD_METADATA_MISSING','Transfer upload metadata is incomplete.');const archive=archiver('zip',{zlib:{level:6}});const write=fs.createWriteStream(work);const finished=new Promise((resolve,reject)=>{write.once('close',resolve);write.once('error',reject);archive.once('error',reject);});archive.pipe(write);let total=0;for(const f of item.files){if(!f.objectKey||f.objectKey!==`uploads/${id}/${f.objectKey.split('/').pop()}`)return fail(500,'INVALID_STORAGE_REFERENCE','Transfer storage metadata is invalid.');const head=await s3.send(new HeadObjectCommand({Bucket:process.env.UPLOADS_BUCKET,Key:f.objectKey}));const actual=Number(head.ContentLength||0);if(actual!==Number(f.fileSize))return fail(409,'UPLOAD_SIZE_MISMATCH','One or more uploaded files do not match their declared size.');if(head.ContentType&&head.ContentType!==f.contentType)return fail(409,'UPLOAD_TYPE_MISMATCH','One or more uploaded files do not match their declared type.');total+=actual;if(total>2147483648)return fail(413,'TOTAL_SIZE_TOO_LARGE','The transfer exceeds the archive size limit.');const obj=await s3.send(new GetObjectCommand({Bucket:process.env.UPLOADS_BUCKET,Key:f.objectKey}));archive.append(obj.Body,{name:String(f.fileName||'file').replace(/[\\/\r\n]/g,'_').slice(0,180)||'file'});}await archive.finalize();await finished;const stat=fs.statSync(work);if(stat.size>2147483648)return fail(413,'ARCHIVE_TOO_LARGE','The generated archive exceeds the limit.');await s3.send(new PutObjectCommand({Bucket:process.env.UPLOADS_BUCKET,Key:`zips/${id}.zip`,Body:fs.createReadStream(work),ContentLength:stat.size,ContentType:'application/zip'}));const updated=await ddb.send(new UpdateCommand({TableName:process.env.TABLE_NAME,Key:{transferId:id},UpdateExpression:'SET #status=:ready,zipKey=:zipKey,archiveSize=:archiveSize,completedAt=:completedAt',ExpressionAttributeNames:{'#status':'status'},ExpressionAttributeValues:{':pending':'pending',':ready':'ready',':zipKey':`zips/${id}.zip`,':archiveSize':stat.size,':completedAt':new Date().toISOString()},ConditionExpression:'#status=:pending',ReturnValues:'ALL_NEW'}));return out(200,{success:true,data:{transferId:id,status:updated.Attributes.status}});}catch(x){console.error('batch-complete failed',{name:x?.name});if(x?.name==='NotFound'||x?.$metadata?.httpStatusCode===404)return fail(409,'UPLOADS_NOT_READY','One or more files have not finished uploading.');if(x?.name==='ConditionalCheckFailedException')return out(200,{success:true,data:{transferId:id,status:'ready'}});return fail(500,'INTERNAL_ERROR','Unable to finalize transfer.');}finally{try{fs.unlinkSync(work);}catch(_){}}};
