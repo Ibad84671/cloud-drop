@@ -1,116 +1,19 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard — CloudDrop</title>
-  <link rel="stylesheet" href="/css/style.css" />
-</head>
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Dashboard — CloudDrop</title><link rel="stylesheet" href="/css/style.css" /></head>
 <body>
-  <header>
-    <div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div>
-    <nav>
-      <span id="user-email" style="font-weight:500;color:var(--text-secondary);"></span>
-      <button id="logout-btn" style="background:var(--danger);color:#fff;">Logout</button>
-      <div class="theme-toggle" id="themeToggle" title="Toggle theme">🌓</div>
-    </nav>
-  </header>
-  <main class="container" style="padding:2rem 1rem;">
-    <h2 style="margin-bottom:1.5rem;">My Transfers</h2>
-    <div id="transfers-list" class="table-wrap glass">Loading...</div>
-    <div style="margin-top:1.5rem;">
-      <button onclick="window.location.href='/'" style="background:var(--accent);padding:0.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">➕ New Upload</button>
-    </div>
-  </main>
-  <script src="/js/theme.js"></script>
-  <script>
-<<<<<<< HEAD
-    const API_BASE = 'https://23pm2zjtw8.execute-api.us-east-1.amazonaws.com/prod';
-=======
-    const API_BASE = 'https://zsiiwyicn3.execute-api.us-east-1.amazonaws.com/prod';
->>>>>>> 8779baac422899ac4ecc705b9cd116945b48a3b2
-    const COGNITO_DOMAIN = 'clouddrop-502263855269-dev';
-    const CLIENT_ID = '5rp8tss9iu3s1jb4p5qdljog2e';
-    const REDIRECT_URI = window.location.origin + '/dashboard.html';
-
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const idToken = params.get('id_token');
-    if (idToken) {
-      localStorage.setItem('accessToken', idToken);
-      localStorage.setItem('idToken', idToken);
-      window.location.hash = '';
-    }
-    const token = localStorage.getItem('accessToken') || localStorage.getItem('idToken');
-    if (!token) {
-      window.location.href = `https://${COGNITO_DOMAIN}.auth.us-east-1.amazoncognito.com/login?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
-    }
-
-    function parseJwt(t) {
-      try {
-        const base64Url = t.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-        return JSON.parse(jsonPayload);
-      } catch(e) { return {}; }
-    }
-    try {
-      const payload = parseJwt(token);
-      document.getElementById('user-email').textContent = payload.email || 'User';
-    } catch(e) {}
-
-    async function loadTransfers() {
-      try {
-        const res = await fetch(API_BASE + '/user/transfers', {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
-        const container = document.getElementById('transfers-list');
-        if (data.length === 0) {
-          container.innerHTML = '<p style="color:var(--text-secondary);">No transfers yet. Upload a file to get started!</p>';
-          return;
-        }
-        let html = `<table>
-          <thead><tr><th>File</th><th>Size</th><th>Status</th><th>Expires</th><th>Downloads</th><th>Action</th></tr></thead><tbody>`;
-        data.forEach(item => {
-          const sizeMB = (item.fileSize / 1024 / 1024).toFixed(2);
-          const expires = new Date(item.expiresAt).toLocaleDateString();
-          html += `<tr>
-            <td>${item.originalFileName}</td>
-            <td>${sizeMB} MB</td>
-            <td>${item.status}</td>
-            <td>${expires}</td>
-            <td>${item.downloadCount || 0}</td>
-            <td><button onclick="deleteTransfer('${item.transferId}')">Delete</button></td>
-          </tr>`;
-        });
-        html += '</tbody></table>';
-        container.innerHTML = html;
-      } catch (err) {
-        document.getElementById('transfers-list').innerHTML = '<p style="color:var(--danger);">Error loading transfers. Please try again.</p>';
-        console.error(err);
-      }
-    }
-
-    async function deleteTransfer(transferId) {
-      if (!confirm('Delete this transfer?')) return;
-      try {
-        const res = await fetch(API_BASE + '/transfer/' + transferId, {
-          method: 'DELETE',
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (res.ok) loadTransfers();
-        else alert('Delete failed');
-      } catch(e) { alert('Error deleting'); }
-    }
-
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      localStorage.clear();
-      window.location.href = '/';
-    });
-
-    loadTransfers();
-  </script>
-</body>
-</html>
+<header><div class="logo" onclick="window.location.href='/'">☁️ <span>CloudDrop</span></div><nav><span id="user-email" style="font-weight:500;color:var(--text-secondary);"></span><button id="logout-btn" type="button" style="background:var(--danger);color:#fff;">Logout</button><div class="theme-toggle" id="themeToggle" title="Toggle theme" role="button" tabindex="0">🌓</div></nav></header>
+<main class="container" style="padding:2rem 1rem;"><h2 style="margin-bottom:1.5rem;">My Transfers</h2><div id="transfers-list" class="table-wrap glass">Loading…</div><div style="margin-top:1.5rem;"><button id="new-upload" type="button" style="background:var(--accent);padding:.6rem 1.8rem;border-radius:40px;font-weight:600;border:none;cursor:pointer;color:#fff;">➕ New Upload</button></div></main>
+<script src="/js/config.js"></script><script src="/js/theme.js"></script>
+<script>
+(() => {
+  const config=window.CLOUDDROP_CONFIG||{};const API_BASE=String(config.apiBase||'').replace(/\/$/,'');const token=sessionStorage.getItem('idToken')||sessionStorage.getItem('accessToken');if(!token||!API_BASE){window.location.href='/login.html';return;}
+  function parseJwt(value){try{const part=value.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(decodeURIComponent(atob(part).split('').map(c=>`%${('00'+c.charCodeAt(0).toString(16)).slice(-2)}`).join('')));}catch{return {};}}
+  const claims=parseJwt(token);if(claims.exp&&claims.exp*1000<=Date.now()){sessionStorage.clear();window.location.href='/login.html';return;}document.getElementById('user-email').textContent=claims.email||'User';
+  const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));const formatBytes=bytes=>{if(!Number.isFinite(bytes)||bytes<=0)return'0 B';const units=['B','KB','MB','GB'];let i=0,n=bytes;while(n>=1024&&i<units.length-1){n/=1024;i++;}return`${n.toFixed(i?2:0)} ${units[i]}`;};
+  async function loadTransfers(){const container=document.getElementById('transfers-list');try{const response=await fetch(`${API_BASE}/user/transfers`,{headers:{Authorization:`Bearer ${token}`}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Failed to fetch transfers.');const items=data.items||[];if(!items.length){container.innerHTML='<p style="color:var(--text-secondary);">No transfers yet. Upload a file to get started!</p>';return;}let html='<table><thead><tr><th>File(s)</th><th>Size</th><th>Status</th><th>Expires</th><th>Downloads</th><th>Action</th></tr></thead><tbody>';for(const item of items){const label=item.isBatch?`${item.files?.length||0} files`:(item.originalFileName||'File');const size=item.isBatch?item.totalInputSize:item.fileSize;html+=`<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formatBytes(Number(size||0)))}</td><td>${escapeHtml(item.status||'unknown')}</td><td>${escapeHtml(item.expiresAt?new Date(item.expiresAt).toLocaleDateString():'—')}</td><td>${escapeHtml(item.downloadCount||0)}</td><td><button type="button" data-transfer-id="${escapeHtml(item.transferId)}">Delete</button></td></tr>`;}container.innerHTML=html+'</tbody></table>';container.querySelectorAll('[data-transfer-id]').forEach(button=>button.addEventListener('click',()=>deleteTransfer(button.dataset.transferId)));}catch(error){container.innerHTML=`<p style="color:var(--danger);">${escapeHtml(error.message)}</p>`;}}
+  async function deleteTransfer(transferId){if(!confirm('Delete this transfer and its stored files?'))return;const response=await fetch(`${API_BASE}/transfer/${encodeURIComponent(transferId)}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`}});if(!response.ok){const data=await response.json().catch(()=>({}));alert(`Delete failed: ${data.error||response.status}`);return;}loadTransfers();}
+  document.getElementById('logout-btn').addEventListener('click',()=>{sessionStorage.clear();window.location.href='/';});document.getElementById('new-upload').addEventListener('click',()=>{window.location.href='/';});loadTransfers();
+})();
+</script>
+</body></html>
