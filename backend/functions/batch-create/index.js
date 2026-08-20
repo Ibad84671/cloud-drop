@@ -5,7 +5,7 @@ const {getSignedUrl}=require('@aws-sdk/s3-request-presigner');
 const crypto=require('crypto');
 const ddb=DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3=new S3Client({});
-const maxFiles=Number(process.env.MAX_FILES||20),maxTotal=Number(process.env.MAX_TOTAL_SIZE||2147483648),maxFile=Number(process.env.MAX_FILE_SIZE||2147483648);
+const maxFiles=Number(process.env.MAX_FILES||100),maxTotal=Number(process.env.MAX_TOTAL_SIZE||2147483648),maxFile=Number(process.env.MAX_FILE_SIZE||2147483648);
 const headers=()=>({'Access-Control-Allow-Origin':process.env.ALLOWED_ORIGIN,'Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Content-Type':'application/json'});
 const out=(s,b)=>({statusCode:s,headers:headers(),body:JSON.stringify(b)}),fail=(s,c,m)=>out(s,{success:false,error:{code:c,message:m}});
 function validate(files){if(!Array.isArray(files)||files.length<1||files.length>maxFiles)throw[400,'INVALID_FILE_LIST',`Choose between 1 and ${maxFiles} files.`];let total=0;for(const f of files){if(!f||typeof f.fileName!=='string'||!f.fileName.trim()||f.fileName.length>255)throw[400,'INVALID_FILE_NAME','Invalid file name.'];if(!Number.isSafeInteger(f.fileSize)||f.fileSize<=0||f.fileSize>maxFile)throw[413,'FILE_TOO_LARGE','File exceeds the maximum size.'];if(typeof f.contentType!=='string'||f.contentType.length<1||f.contentType.length>200||!/^[\w.+-]+\/[\w.+-]+$/.test(f.contentType))throw[400,'INVALID_CONTENT_TYPE','Invalid content type.'];total+=f.fileSize;if(total>maxTotal)throw[413,'TOTAL_SIZE_TOO_LARGE','Total upload size exceeds the limit.'];}return total;}

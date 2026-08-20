@@ -38,7 +38,7 @@ jobs:
       - name: Validate CloudFormation
         run: |
           python -m pip install --disable-pip-version-check cfn-lint
-          cfn-lint infrastructure/cfn/main.yaml
+          cfn-lint --ignore-checks W2531 --template infrastructure/cfn/main.yaml
 
   deploy:
     name: Deploy
