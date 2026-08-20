@@ -15,7 +15,10 @@ window.CLOUDDROP_CONFIG = {
   emailEnabled: false
 };
 
-// Keep UI/navigation enhancement code separate from the transfer runtime.
+// Load the real interaction controller synchronously before index.html's inline code.
+document.write('<script src="/js/app.js"><\\/script>');
+
+// Keep visual/navigation enhancements separate from the transfer controller.
 (function () {
   var script = document.createElement('script');
   script.src = '/js/site-enhancements.js';
