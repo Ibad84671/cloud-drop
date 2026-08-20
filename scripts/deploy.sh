@@ -50,6 +50,8 @@ window.CLOUDDROP_CONFIG = {
   frontendBaseUrl: window.CloudDropConfig.FRONTEND_BASE_URL,
   emailEnabled: ${EMAIL_ENABLED}
 };
+// Load the authoritative interaction controller before index.html's inline handlers.
+document.write('<script src="/js/app.js"><\\/script>');
 (function () {
   var script = document.createElement('script');
   script.src = '/js/site-enhancements.js';
