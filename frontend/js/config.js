@@ -15,13 +15,10 @@ window.CLOUDDROP_CONFIG = {
   emailEnabled: false
 };
 
-// Keep UI/navigation enhancements separate from the transfer logic.
+// Keep UI/navigation enhancement code separate from the transfer runtime.
 (function () {
-  var scripts = ['/js/site-enhancements.js', '/js/content-consistency.js'];
-  scripts.forEach(function (src) {
-    var script = document.createElement('script');
-    script.src = src;
-    script.defer = true;
-    document.head.appendChild(script);
-  });
+  var script = document.createElement('script');
+  script.src = '/js/site-enhancements.js';
+  script.defer = true;
+  document.head.appendChild(script);
 })();
