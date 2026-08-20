@@ -1,0 +1,321 @@
+(() => {
+  'use strict';
+
+  const cfg = window.CloudDropConfig || {};
+  const API = String(cfg.API_BASE || '').replace(/\/$/, '');
+  const MAX_FILES = 100;
+  const MAX_TOTAL = 2147483648;
+  const state = { files: [], transferId: null, busy: false };
+  const $ = id => document.getElementById(id);
+  const el = {
+    fileInput: $('fileInput'),
+    drop: $('dropZone'),
+    browse: $('browseBtn'),
+    list: $('fileList'),
+    limit: $('limitText'),
+    upload: $('uploadBtn'),
+    bar: $('uploadBar'),
+    fill: $('progressFill'),
+    pct: $('progressPct'),
+    progressText: $('progressText'),
+    share: $('sharePanel'),
+    shareLink: $('shareLink'),
+    copy: $('copyBtn'),
+    email: $('emailInput'),
+    send: $('sendEmailBtn'),
+    emailFeedback: $('emailFeedback'),
+    newTransfer: $('newTransferBtn'),
+    toast: $('toast'),
+    theme: $('themeToggle')
+  };
+
+  if (!el.fileInput || !el.drop || !el.upload || !el.list) return;
+
+  function toast(message, type = '') {
+    if (!el.toast) return;
+    el.toast.textContent = message;
+    el.toast.className = `toast show ${type}`;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => { el.toast.className = 'toast'; }, 3200);
+  }
+
+  function human(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
+    return `${(bytes / 1073741824).toFixed(2)} GB`;
+  }
+
+  function total() { return state.files.reduce((sum, file) => sum + file.size, 0); }
+
+  function render() {
+    el.list.innerHTML = '';
+    state.files.forEach((file, index) => {
+      const row = document.createElement('div');
+      row.className = 'file-row';
+      row.innerHTML = '<div class="file-icon" aria-hidden="true">▧</div><span class="file-name"></span><span class="file-size"></span><button class="remove" type="button" aria-label="Remove file">×</button>';
+      row.querySelector('.file-name').textContent = file.name;
+      row.querySelector('.file-size').textContent = human(file.size);
+      row.querySelector('.remove').addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (state.busy) return;
+        state.files.splice(index, 1);
+        try { el.fileInput.value = ''; } catch (_) {}
+        render();
+      });
+      el.list.appendChild(row);
+    });
+
+    el.limit.textContent = state.files.length
+      ? `${state.files.length} file${state.files.length === 1 ? '' : 's'} · ${human(total())} / 2GB`
+      : 'Up to 2GB · up to 100 files per transfer.';
+    el.upload.disabled = state.busy || state.files.length === 0;
+  }
+
+  function acceptFiles(incoming) {
+    if (state.busy) return;
+    const incomingFiles = Array.from(incoming || []).filter(file => file instanceof File);
+    if (!incomingFiles.length) return;
+
+    const seen = new Set(state.files.map(file => `${file.name}|${file.size}|${file.lastModified}`));
+    for (const file of incomingFiles) {
+      const key = `${file.name}|${file.size}|${file.lastModified}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        state.files.push(file);
+      }
+    }
+
+    if (state.files.length > MAX_FILES) {
+      state.files = state.files.slice(0, MAX_FILES);
+      toast('Maximum 100 files allowed.', 'error');
+    }
+
+    if (total() > MAX_TOTAL) {
+      let sum = 0;
+      const kept = [];
+      for (const file of state.files) {
+        if (sum + file.size > MAX_TOTAL) break;
+        kept.push(file);
+        sum += file.size;
+      }
+      state.files = kept;
+      toast('Total upload size cannot exceed 2GB.', 'error');
+    }
+
+    el.share?.classList.remove('show');
+    render();
+  }
+
+  function setProgress(percent, label) {
+    const value = Math.max(0, Math.min(100, percent));
+    el.bar?.classList.add('show');
+    if (el.fill) el.fill.style.width = `${value}%`;
+    if (el.pct) el.pct.textContent = `${Math.round(value)}%`;
+    if (el.progressText) el.progressText.textContent = label;
+  }
+
+  async function api(path, options = {}) {
+    if (!API) throw new Error('CloudDrop API is not configured.');
+    const headers = new Headers(options.headers || {});
+    headers.set('Content-Type', 'application/json');
+    const response = await fetch(API + path, { ...options, headers });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error?.message || data?.message || `Request failed (${response.status}).`);
+    return data;
+  }
+
+  function putObject(url, file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', url);
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable) onProgress(event.loaded / event.total);
+      };
+      xhr.onload = () => xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload failed for ${file.name} (${xhr.status}).`));
+      xhr.onerror = () => reject(new Error(`Network error uploading ${file.name}.`));
+      xhr.send(file);
+    });
+  }
+
+  async function startTransfer() {
+    if (state.busy || !state.files.length) return;
+    state.busy = true;
+    render();
+    setProgress(0, 'Creating secure transfer…');
+
+    try {
+      const created = await api('/batch', {
+        method: 'POST',
+        body: JSON.stringify({
+          files: state.files.map(file => ({
+            fileName: file.name,
+            fileSize: file.size,
+            contentType: file.type || 'application/octet-stream'
+          }))
+        })
+      });
+
+      const data = created.data || created;
+      state.transferId = data.transferId;
+      const uploads = data.uploads || [];
+      if (!state.transferId || uploads.length !== state.files.length) {
+        throw new Error('Upload service returned an unexpected transfer payload.');
+      }
+
+      const bytes = total() || 1;
+      let completed = 0;
+      for (let i = 0; i < state.files.length; i++) {
+        const file = state.files[i];
+        const item = uploads[i];
+        if (!item?.uploadUrl) throw new Error(`No upload URL returned for ${file.name}.`);
+        setProgress((completed / bytes) * 100, `Uploading ${i + 1} of ${state.files.length}…`);
+        await putObject(item.uploadUrl, file, ratio => {
+          setProgress(((completed + file.size * ratio) / bytes) * 100, `Uploading ${i + 1} of ${state.files.length}…`);
+        });
+        completed += file.size;
+      }
+
+      setProgress(100, 'Finalizing transfer…');
+      await api(`/batch/${encodeURIComponent(state.transferId)}/complete`, {
+        method: 'POST',
+        body: '{}'
+      });
+
+      const base = String(window.location.origin || '').replace(/\/$/, '');
+      el.shareLink.value = `${base}/t/${encodeURIComponent(state.transferId)}`;
+      el.share.classList.add('show');
+      toast('Transfer created successfully.', 'success');
+      el.share.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (error) {
+      if (el.progressText) el.progressText.textContent = 'Upload failed.';
+      toast(error?.message || 'Unable to complete the transfer.', 'error');
+    } finally {
+      state.busy = false;
+      render();
+    }
+  }
+
+  async function copyLink() {
+    const link = el.shareLink?.value;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch (_) {
+      el.shareLink.focus();
+      el.shareLink.select();
+      document.execCommand('copy');
+    }
+    el.copy.textContent = 'Copied';
+    toast('Share link copied.', 'success');
+    setTimeout(() => { el.copy.textContent = 'Copy link'; }, 1400);
+  }
+
+  async function sendEmail() {
+    if (!state.transferId) return;
+    const to = el.email.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      el.emailFeedback.textContent = 'Enter a valid recipient email.';
+      el.emailFeedback.className = 'email-feedback err';
+      el.email.focus();
+      return;
+    }
+    el.send.disabled = true;
+    el.emailFeedback.textContent = 'Sending…';
+    el.emailFeedback.className = 'email-feedback';
+    try {
+      await api('/send-email', {
+        method: 'POST',
+        body: JSON.stringify({ to, transferId: state.transferId })
+      });
+      el.emailFeedback.textContent = 'Email sent successfully.';
+      el.emailFeedback.className = 'email-feedback ok';
+      toast('Share link sent by email.', 'success');
+    } catch (error) {
+      const message = error?.message || 'Email delivery failed.';
+      el.emailFeedback.textContent = message.toLowerCase().includes('disabled') || message.toLowerCase().includes('not enabled')
+        ? 'Email delivery is not enabled on this deployment yet.'
+        : message;
+      el.emailFeedback.className = 'email-feedback err';
+      toast(message, 'error');
+    } finally {
+      el.send.disabled = false;
+    }
+  }
+
+  function reset() {
+    state.files = [];
+    state.transferId = null;
+    state.busy = false;
+    el.fileInput.value = '';
+    el.share.classList.remove('show');
+    el.shareLink.value = '';
+    el.email.value = '';
+    el.emailFeedback.textContent = '';
+    el.emailFeedback.className = 'email-feedback';
+    el.bar.classList.remove('show');
+    if (el.fill) el.fill.style.width = '0%';
+    if (el.pct) el.pct.textContent = '0%';
+    render();
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('clouddrop-theme', theme);
+    if (el.theme) {
+      el.theme.textContent = theme === 'dark' ? '◐' : '☀';
+      el.theme.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+      el.theme.setAttribute('aria-pressed', String(theme === 'dark'));
+    }
+  }
+
+  function stop(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  function install() {
+    applyTheme(localStorage.getItem('clouddrop-theme') === 'light' ? 'light' : 'dark');
+
+    el.theme?.addEventListener('click', event => { stop(event); applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); }, true);
+
+    el.browse?.addEventListener('click', event => { stop(event); el.fileInput.click(); }, true);
+    el.drop.addEventListener('click', event => { if (!event.target.closest('#browseBtn')) { stop(event); el.fileInput.click(); } }, true);
+    el.drop.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { stop(event); el.fileInput.click(); }
+    }, true);
+
+    el.fileInput.addEventListener('change', event => { stop(event); acceptFiles(event.target.files); }, true);
+
+    document.addEventListener('dragover', event => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    }, true);
+    document.addEventListener('drop', event => {
+      if (!el.drop.contains(event.target)) event.preventDefault();
+    }, true);
+
+    el.drop.addEventListener('dragenter', event => { stop(event); el.drop.classList.add('drag'); }, true);
+    el.drop.addEventListener('dragover', event => { stop(event); el.drop.classList.add('drag'); }, true);
+    el.drop.addEventListener('dragleave', event => {
+      event.preventDefault();
+      if (!event.relatedTarget || !el.drop.contains(event.relatedTarget)) el.drop.classList.remove('drag');
+    }, true);
+    el.drop.addEventListener('drop', event => { stop(event); el.drop.classList.remove('drag'); acceptFiles(event.dataTransfer?.files); }, true);
+
+    el.upload.addEventListener('click', event => { stop(event); startTransfer(); }, true);
+    el.copy?.addEventListener('click', event => { stop(event); copyLink(); }, true);
+    el.send?.addEventListener('click', event => { stop(event); sendEmail(); }, true);
+    el.email?.addEventListener('keydown', event => { if (event.key === 'Enter') { stop(event); sendEmail(); } }, true);
+    el.newTransfer?.addEventListener('click', event => { stop(event); reset(); }, true);
+
+    render();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
+  else install();
+})();
