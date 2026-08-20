@@ -28,9 +28,25 @@ done
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 BUCKET="clouddrop-frontend-${ENVIRONMENT}-${ACCOUNT_ID}"
-printf 'window.CLOUDDROP_CONFIG = { apiBase: "%s", region: "%s", cognitoClientId: "%s", cognitoUserPoolId: "%s", cognitoDomain: "%s", emailEnabled: %s };\n' \
-  "$API_URL" "$REGION" "$CLIENT_ID" "$USER_POOL_ID" "$COGNITO_DOMAIN" \
-  "$([[ "$EMAIL_ENABLED" == "true" ]] && echo true || echo false)" > frontend/js/config.js
+cat > frontend/js/config.js <<EOF
+window.CloudDropConfig = {
+  API_BASE: "${API_URL}",
+  COGNITO_DOMAIN: "${COGNITO_DOMAIN}",
+  COGNITO_CLIENT_ID: "${CLIENT_ID}",
+  TRANSFER_DAYS: 7,
+  FRONTEND_BASE_URL: "${CLOUDFRONT_URL}"
+};
+window.CLOUDDROP_CONFIG = {
+  apiBase: window.CloudDropConfig.API_BASE,
+  region: "${REGION}",
+  cognitoClientId: window.CloudDropConfig.COGNITO_CLIENT_ID,
+  cognitoUserPoolId: "${USER_POOL_ID}",
+  cognitoDomain: window.CloudDropConfig.COGNITO_DOMAIN,
+  transferDays: window.CloudDropConfig.TRANSFER_DAYS,
+  frontendBaseUrl: window.CloudDropConfig.FRONTEND_BASE_URL,
+  emailEnabled: ${EMAIL_ENABLED}
+};
+EOF
 
 aws s3 sync frontend/ "s3://${BUCKET}" --delete
 
