@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="CloudDrop — fast, private, frictionless file sharing.">
-  <meta name="theme-color" content="#0b0d12">
+  <meta name="theme-color" content="#080a0f">
   <title>CloudDrop — Send files. Share the link. Done.</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
-<body>
+<body class="landing-page">
   <header class="site-header">
     <a class="brand" href="/" aria-label="CloudDrop home"><span class="brand-mark">C</span><span>CloudDrop</span></a>
     <nav class="nav-actions" aria-label="Primary navigation">
@@ -18,48 +18,115 @@
       <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme" title="Toggle theme">◐</button>
     </nav>
   </header>
-  <main class="container page-shell">
-    <section class="hero" aria-labelledby="page-title">
+
+  <main class="container landing-shell">
+    <section class="hero landing-hero" aria-labelledby="page-title">
+      <div class="hero-glow hero-glow-a" aria-hidden="true"></div>
+      <div class="hero-glow hero-glow-b" aria-hidden="true"></div>
       <span class="eyebrow">PRIVATE FILE TRANSFER · NO ACCOUNT REQUIRED</span>
       <h1 id="page-title">Send files.<br><span>Share the link. Done.</span></h1>
-      <p>Fast, private file sharing without the account-management headache.</p>
+      <p>Fast, effortless sharing with nothing unnecessary in the way.</p>
     </section>
-    <section class="transfer-card" aria-labelledby="upload-heading">
-      <div class="card-topline"><div><h2 id="upload-heading">Create a transfer</h2><p>Drop one or more files. CloudDrop keeps the originals private.</p></div><span class="security-pill">Private by default</span></div>
-      <div id="drop-zone" class="upload-zone" tabindex="0" role="button" aria-controls="file-input" aria-label="Choose files to upload">
-        <input type="file" id="file-input" multiple hidden>
-        <div class="upload-orb" aria-hidden="true">↑</div><h3>Drop files here</h3><p>or <span class="upload-link">browse from your device</span></p>
-        <div class="upload-limits"><span>Up to 20 files</span><span>•</span><span>2 GB total</span></div>
-      </div>
-      <div id="file-list" class="file-list" hidden></div>
-      <div id="upload-progress" class="state-panel" hidden aria-live="polite"><div class="state-heading"><span>Uploading securely</span><strong id="progress-text">0%</strong></div><div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div><p id="progress-detail">Preparing your transfer…</p></div>
-      <div id="upload-result" class="success-panel" hidden aria-live="polite">
-        <div class="success-icon" aria-hidden="true">✓</div><div><span class="eyebrow success-eyebrow">TRANSFER READY</span><h3>Your link is ready.</h3><p>Anyone with the link can download the transfer until it expires.</p></div>
-        <div class="share-row"><input id="share-link" type="text" readonly aria-label="Share link"><button id="copy-btn" class="btn btn-primary" type="button">Copy link</button></div>
-        <div id="email-row" class="email-row" hidden><input id="recipient-email" type="email" inputmode="email" autocomplete="email" placeholder="Recipient email (optional)" aria-label="Recipient email"><button id="email-btn" class="btn btn-secondary" type="button">Send by email</button></div>
-        <p id="email-status" class="inline-status" role="status"></p><button id="new-upload-btn" class="text-btn" type="button">Create another transfer</button>
-      </div>
-      <div id="upload-error" class="error-panel" hidden role="alert"><strong>Upload could not be completed.</strong><p id="error-text">Please try again.</p><button id="retry-btn" class="btn btn-secondary" type="button">Try again</button></div>
+
+    <section class="upload-stage" aria-label="Create a file transfer">
+      <aside class="side-rail side-rail-left" aria-label="How CloudDrop works">
+        <div class="ambient-label">THE SIMPLE ROUTE</div>
+        <div class="rail-line" aria-hidden="true"></div>
+        <article class="side-card side-card-step active">
+          <span class="step-no">01</span><div><strong>Add files</strong><span>Drop them here or browse.</span></div>
+        </article>
+        <article class="side-card side-card-step">
+          <span class="step-no">02</span><div><strong>Get a link</strong><span>Your share link is created for you.</span></div>
+        </article>
+        <article class="side-card side-card-step">
+          <span class="step-no">03</span><div><strong>Send anywhere</strong><span>Copy it or email it instantly.</span></div>
+        </article>
+        <div class="side-status"><span class="status-dot"></span><span>Ready when you are</span></div>
+      </aside>
+
+      <section class="transfer-card transfer-card-main" aria-labelledby="upload-heading">
+        <div class="card-topline">
+          <div><span class="mini-kicker">CLOUDDROP TRANSFER</span><h2 id="upload-heading">Create a transfer</h2><p>One clean flow from files to shareable link.</p></div>
+          <span class="security-pill"><span class="pill-dot"></span>Private by default</span>
+        </div>
+
+        <div id="drop-zone" class="upload-zone" tabindex="0" role="button" aria-controls="file-input" aria-label="Choose files to upload">
+          <input type="file" id="file-input" multiple hidden>
+          <div class="upload-grid" aria-hidden="true"></div>
+          <div class="upload-orb"><span>↑</span></div>
+          <h3>Drop files here</h3>
+          <p>or <span class="upload-link">browse from your device</span></p>
+          <div class="upload-limits"><span>Up to 20 files</span><i>•</i><span>2 GB total</span></div>
+          <div class="drop-hint">PNG, JPG, PDF, ZIP and more</div>
+        </div>
+
+        <div id="file-list" class="file-list" hidden></div>
+        <div id="upload-progress" class="state-panel" hidden aria-live="polite">
+          <div class="state-heading"><span>Preparing your transfer</span><strong id="progress-text">0%</strong></div>
+          <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+          <p id="progress-detail">Uploading directly from your browser…</p>
+        </div>
+
+        <div id="upload-result" class="success-panel success-panel-share" hidden aria-live="polite">
+          <div class="success-top">
+            <div class="success-icon" aria-hidden="true">✓</div>
+            <div><span class="eyebrow success-eyebrow">TRANSFER READY</span><h3>Your share link is ready.</h3><p>Choose how you want to send it.</p></div>
+          </div>
+          <div class="share-link-shell"><span class="link-icon" aria-hidden="true">↗</span><input id="share-link" type="text" readonly aria-label="Share link"><button id="copy-btn" class="btn btn-primary" type="button">Copy link</button></div>
+          <div class="share-actions">
+            <button id="copy-action-btn" class="share-option share-option-primary" type="button"><span class="share-option-icon">↗</span><span><strong>Copy share link</strong><small>Paste it anywhere you want.</small></span></button>
+            <button id="email-action-btn" class="share-option" type="button" hidden><span class="share-option-icon">✉</span><span><strong>Send by email</strong><small>Send the link straight to someone.</small></span></button>
+          </div>
+          <div id="email-row" class="email-composer" hidden>
+            <label for="recipient-email">Recipient email</label>
+            <div class="email-composer-row"><input id="recipient-email" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com"><button id="email-btn" class="btn btn-secondary" type="button">Send email</button></div>
+            <p id="email-status" class="inline-status" role="status"></p>
+          </div>
+          <button id="new-upload-btn" class="text-btn" type="button">Create another transfer</button>
+        </div>
+
+        <div id="upload-error" class="error-panel" hidden role="alert"><strong>Upload could not be completed.</strong><p id="error-text">Please try again.</p><button id="retry-btn" class="btn btn-secondary" type="button">Try again</button></div>
+      </section>
+
+      <aside class="side-rail side-rail-right" aria-label="CloudDrop highlights">
+        <div class="ambient-orbit orbit-one" aria-hidden="true"></div>
+        <div class="ambient-orbit orbit-two" aria-hidden="true"></div>
+        <div class="floating-chip chip-a"><span>↗</span>Share link</div>
+        <div class="floating-chip chip-b"><span>✓</span>Ready to send</div>
+        <div class="floating-chip chip-c"><span>✦</span>Minimal friction</div>
+        <div class="right-copy"><span class="ambient-label">BUILT FOR THE MOMENT</span><h2>Files in.<br><em>Friction out.</em></h2><p>No busy dashboard. No unnecessary steps. Just the transfer.</p></div>
+      </aside>
     </section>
-    <section class="trust-row" aria-label="CloudDrop security highlights"><div><strong>Private S3</strong><span>Objects aren't public.</span></div><div><strong>Short-lived links</strong><span>Access expires with the transfer.</span></div><div><strong>Direct upload</strong><span>Files go straight to storage.</span></div></section>
+
+    <section class="trust-row" aria-label="CloudDrop product highlights">
+      <div><span class="trust-icon">◌</span><strong>No signup</strong><span>Share first. Account optional.</span></div>
+      <div><span class="trust-icon">↗</span><strong>One clean link</strong><span>Create once. Send anywhere.</span></div>
+      <div><span class="trust-icon">◷</span><strong>7-day transfer</strong><span>Links don't hang around forever.</span></div>
+    </section>
   </main>
+
   <footer class="site-footer"><span>CloudDrop</span><span>Fast, simple, secure.</span></footer>
   <script src="/js/config.js"></script><script src="/js/theme.js"></script>
   <script>
     (() => {
       'use strict';
-      const config=window.CLOUDDROP_CONFIG||{}; const API_BASE=config.apiBase||''; const token=sessionStorage.getItem('accessToken')||sessionStorage.getItem('idToken'); const $=id=>document.getElementById(id); const dropZone=$('drop-zone'); const fileInput=$('file-input'); let selectedFiles=[];
-      if(token){$('user-status').textContent='Signed in';$('auth-btn').textContent='Dashboard';$('auth-btn').href='/dashboard.html';$('signup-btn').hidden=true;} if(config.emailEnabled)$('email-row').hidden=false;
+      const config=window.CLOUDDROP_CONFIG||{}; const API_BASE=config.apiBase||''; const token=sessionStorage.getItem('accessToken')||sessionStorage.getItem('idToken'); const $=id=>document.getElementById(id); const dropZone=$('drop-zone'); const fileInput=$('file-input'); let selectedFiles=[]; let currentTransferId='';
+      if(token){$('user-status').textContent='Signed in';$('auth-btn').textContent='Dashboard';$('auth-btn').href='/dashboard.html';$('signup-btn').hidden=true;}
+      if(config.emailEnabled)$('email-action-btn').hidden=false;
       const formatSize=bytes=>{if(bytes<1024)return `${bytes} B`;const units=['KB','MB','GB'];let v=bytes/1024,i=0;while(v>=1024&&i<2){v/=1024;i++;}return `${v.toFixed(v>=100?0:1)} ${units[i]}`;};
       const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       function renderFiles(files){$('file-list').innerHTML=Array.from(files).map((f,i)=>`<div class="file-row"><span class="file-type">${i+1}</span><span class="file-name">${escapeHtml(f.name)}</span><span class="file-size">${formatSize(f.size)}</span></div>`).join('');$('file-list').hidden=false;}
-      function reset(){selectedFiles=[];fileInput.value='';$('file-list').hidden=true;$('file-list').innerHTML='';$('upload-progress').hidden=true;$('upload-result').hidden=true;$('upload-error').hidden=true;$('progress-fill').style.width='0%';$('progress-text').textContent='0%';dropZone.hidden=false;}
+      function reset(){selectedFiles=[];currentTransferId='';fileInput.value='';$('file-list').hidden=true;$('file-list').innerHTML='';$('upload-progress').hidden=true;$('upload-result').hidden=true;$('upload-error').hidden=true;$('email-row').hidden=true;$('recipient-email').value='';$('email-status').textContent='';$('progress-fill').style.width='0%';$('progress-text').textContent='0%';dropZone.hidden=false;}
       async function api(path,options={}){if(!API_BASE)throw new Error('The API endpoint is not configured for this deployment.');const headers=new Headers(options.headers||{});headers.set('Content-Type','application/json');if(token)headers.set('Authorization',token.startsWith('Bearer ')?token:`Bearer ${token}`);const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),30000);try{const res=await fetch(`${API_BASE}${path}`,{...options,headers,signal:controller.signal});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data?.error?.message||'Request failed.');return data;}finally{clearTimeout(timeout);}}
-      async function upload(files){const list=Array.from(files);const total=list.reduce((s,f)=>s+f.size,0);if(list.length<1||list.length>20)throw new Error('Choose between 1 and 20 files.');if(total>2*1024**3)throw new Error('The total upload size cannot exceed 2 GB.');dropZone.hidden=true;renderFiles(list);$('upload-progress').hidden=false;const infos=list.map(f=>({fileName:f.name,fileSize:f.size,contentType:f.type||'application/octet-stream'}));const created=await api('/batch',{method:'POST',body:JSON.stringify({files:infos})});const data=created.data||created;if(!data.transferId||!Array.isArray(data.uploads)||data.uploads.length!==list.length)throw new Error('The server returned an incomplete upload plan.');for(let i=0;i<list.length;i++){const file=list[i],plan=data.uploads[i];if(!plan?.uploadUrl)throw new Error(`Upload plan missing ${file.name}.`);const res=await fetch(plan.uploadUrl,{method:'PUT',body:file,headers:{'Content-Type':file.type||'application/octet-stream'}});if(!res.ok)throw new Error(`Upload failed for ${file.name}.`);const pct=Math.round(((i+1)/list.length)*100);$('progress-fill').style.width=`${pct}%`;$('progress-text').textContent=`${pct}%`;$('progress-detail').textContent=`${i+1} of ${list.length} files uploaded`;}await api(`/batch/${encodeURIComponent(data.transferId)}/complete`,{method:'POST',body:'{}'});const link=`${window.location.origin}/t/${encodeURIComponent(data.transferId)}`;$('share-link').value=link;$('upload-progress').hidden=true;$('upload-result').hidden=false;try{await navigator.clipboard.writeText(link);$('copy-btn').textContent='Copied';setTimeout(()=>$('copy-btn').textContent='Copy link',1800);}catch(_){} }
+      async function upload(files){const list=Array.from(files);const total=list.reduce((s,f)=>s+f.size,0);if(list.length<1||list.length>20)throw new Error('Choose between 1 and 20 files.');if(total>2*1024**3)throw new Error('The total upload size cannot exceed 2 GB.');dropZone.hidden=true;renderFiles(list);$('upload-progress').hidden=false;const infos=list.map(f=>({fileName:f.name,fileSize:f.size,contentType:f.type||'application/octet-stream'}));const created=await api('/batch',{method:'POST',body:JSON.stringify({files:infos})});const data=created.data||created;if(!data.transferId||!Array.isArray(data.uploads)||data.uploads.length!==list.length)throw new Error('The server returned an incomplete upload plan.');currentTransferId=data.transferId;for(let i=0;i<list.length;i++){const file=list[i],plan=data.uploads[i];if(!plan?.uploadUrl)throw new Error(`Upload plan missing ${file.name}.`);const res=await fetch(plan.uploadUrl,{method:'PUT',body:file,headers:{'Content-Type':file.type||'application/octet-stream'}});if(!res.ok)throw new Error(`Upload failed for ${file.name}.`);const pct=Math.round(((i+1)/list.length)*100);$('progress-fill').style.width=`${pct}%`;$('progress-text').textContent=`${pct}%`;$('progress-detail').textContent=`${i+1} of ${list.length} files uploaded`;}
+        await api(`/batch/${encodeURIComponent(data.transferId)}/complete`,{method:'POST',body:'{}'});const link=`${window.location.origin}/t/${encodeURIComponent(data.transferId)}`;$('share-link').value=link;$('upload-progress').hidden=true;$('upload-result').hidden=false;$('copy-action-btn').focus();
+      }
       async function handleFiles(files){selectedFiles=Array.from(files||[]);if(!selectedFiles.length)return;try{await upload(selectedFiles);}catch(error){$('upload-progress').hidden=true;$('upload-error').hidden=false;$('error-text').textContent=error.name==='AbortError'?'The request timed out. Please try again.':error.message;}}
+      async function copyLink(){try{await navigator.clipboard.writeText($('share-link').value);$('copy-btn').textContent='Copied';$('copy-action-btn').classList.add('done');$('copy-action-btn').querySelector('strong').textContent='Link copied';setTimeout(()=>{$('copy-btn').textContent='Copy link';$('copy-action-btn').querySelector('strong').textContent='Copy share link';$('copy-action-btn').classList.remove('done');},1800);}catch(_){$('share-link').select();document.execCommand('copy');$('copy-btn').textContent='Copied';}}
       dropZone.addEventListener('click',()=>fileInput.click());dropZone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click();}});dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('dragover');});dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragover'));dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('dragover');handleFiles(e.dataTransfer.files);});fileInput.addEventListener('change',()=>handleFiles(fileInput.files));
-      $('copy-btn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('share-link').value);$('copy-btn').textContent='Copied';setTimeout(()=>$('copy-btn').textContent='Copy link',1800);}catch(_){$('share-link').select();document.execCommand('copy');}});$('new-upload-btn').addEventListener('click',reset);$('retry-btn').addEventListener('click',()=>handleFiles(selectedFiles));
-      $('email-btn').addEventListener('click',async()=>{const to=$('recipient-email').value.trim();const transferId=$('share-link').value.split('/').filter(Boolean).pop();if(!to){$('email-status').textContent='Enter a recipient email first.';return;}$('email-btn').disabled=true;$('email-status').textContent='Sending…';try{await api('/send-email',{method:'POST',body:JSON.stringify({to,transferId})});$('email-status').textContent='Email sent.';}catch(error){$('email-status').textContent=error.message;}finally{$('email-btn').disabled=false;}});
+      $('copy-btn').addEventListener('click',copyLink);$('copy-action-btn').addEventListener('click',copyLink);$('new-upload-btn').addEventListener('click',reset);$('retry-btn').addEventListener('click',()=>handleFiles(selectedFiles));
+      $('email-action-btn').addEventListener('click',()=>{$('email-row').hidden=false;$('recipient-email').focus();});
+      $('email-btn').addEventListener('click',async()=>{const to=$('recipient-email').value.trim();if(!to){$('email-status').textContent='Enter a recipient email first.';return;}$('email-btn').disabled=true;$('email-status').textContent='Sending securely…';try{await api('/send-email',{method:'POST',body:JSON.stringify({to,transferId:currentTransferId})});$('email-status').textContent='Email sent. Your recipient can use the link now.';}catch(error){$('email-status').textContent=error.message;}finally{$('email-btn').disabled=false;}});
     })();
   </script>
 </body>
