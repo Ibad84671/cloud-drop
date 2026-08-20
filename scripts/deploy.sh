@@ -15,9 +15,7 @@ if [[ -n "${SES_SOURCE_EMAIL:-}" ]]; then PARAMETERS+=("SesSourceEmail=${SES_SOU
 
 aws cloudformation deploy --region "${REGION}" --template-file infrastructure/cfn/main.yaml --stack-name "${STACK_NAME}" --parameter-overrides "${PARAMETERS[@]}" --capabilities CAPABILITY_IAM
 
-# Keep the deployed API contract aligned with the frontend limit. The current
-# template defaults to 20; this post-deploy guard makes the live Lambda accept
-# the documented 100-file limit until that hard-coded template value is removed.
+# Keep the deployed API contract aligned with the frontend limit.
 BATCH_CREATE_FUNCTION=$(aws cloudformation describe-stack-resource --region "${REGION}" --stack-name "${STACK_NAME}" --logical-resource-id BatchCreateFunction --query StackResourceDetail.PhysicalResourceId --output text)
 aws lambda update-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --environment "Variables={TABLE_NAME=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.TABLE_NAME' --output text),UPLOADS_BUCKET=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.UPLOADS_BUCKET' --output text),MAX_FILES=100,MAX_TOTAL_SIZE=2147483648,MAX_FILE_SIZE=2147483648,ALLOWED_ORIGIN=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.ALLOWED_ORIGIN' --output text)}" >/dev/null
 
@@ -53,27 +51,10 @@ window.CLOUDDROP_CONFIG = {
   emailEnabled: ${EMAIL_ENABLED}
 };
 (function () {
-  function install() {
-    var root = document.documentElement;
-    var style = document.getElementById('clouddrop-ui-fixes');
-    if (!style) {
-      style = document.createElement('style');
-      style.id = 'clouddrop-ui-fixes';
-      style.textContent = '.wrap{width:min(1320px,calc(100% - 48px))}.main-grid{grid-template-columns:260px minmax(0,700px) 260px;column-gap:48px}@media(max-width:1040px){.wrap{width:min(100% - 40px,1320px)}.main-grid{column-gap:32px}}@media(max-width:760px){.wrap{width:calc(100% - 24px)}.main-grid{column-gap:0}}.theme-toggle{font-size:0}.theme-toggle::before{content:"☾";font-size:16px}html[data-theme="light"] .theme-toggle::before{content:"☀"}#emailInput::placeholder{color:transparent}.email-block{position:relative}.email-block:has(#emailInput)::before{content:"Recipient email";display:block;font-size:10px;color:var(--muted);margin:0 0 3px}.side-note{display:none}';
-      document.head.appendChild(style);
-    }
-    var themeButton = document.getElementById('themeToggle');
-    if (themeButton && !themeButton.dataset.hardened) {
-      themeButton.dataset.hardened = 'true';
-      themeButton.addEventListener('click', function () {
-        var next = root.dataset.theme === 'light' ? 'dark' : 'light';
-        root.dataset.theme = next;
-        try { localStorage.setItem('clouddrop-theme', next); } catch (_) {}
-        themeButton.setAttribute('aria-label', next === 'light' ? 'Switch to dark theme' : 'Switch to light theme');
-      });
-    }
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true }); else install();
+  var script = document.createElement('script');
+  script.src = '/js/site-enhancements.js';
+  script.defer = true;
+  document.head.appendChild(script);
 })();
 EOF
 
