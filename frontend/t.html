@@ -1,13 +1,85 @@
 <!doctype html>
 <html lang="en" data-theme="dark">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="CloudDrop secure file transfer download"><title>Transfer — CloudDrop</title><link rel="stylesheet" href="/css/style.css"></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="CloudDrop secure file transfer download">
+<title>Transfer — CloudDrop</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+html[data-theme="light"]{color-scheme:light}
+html[data-theme="dark"]{color-scheme:dark}
+</style>
+</head>
 <body>
-<header class="site-header"><a class="brand" href="/" aria-label="CloudDrop home"><span class="brand-mark">C</span><span>CloudDrop</span></a><button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme">◐</button></header>
-<main class="container page-shell"><section class="hero"><span class="eyebrow">SECURE TRANSFER</span><h1>Your files are<br><span>ready to go.</span></h1><p id="file-info">Checking the transfer…</p></section><section class="transfer-card" style="max-width:620px"><div id="download-content" class="success-panel"><div class="success-icon" aria-hidden="true">↓</div><div><span class="eyebrow success-eyebrow">DOWNLOAD</span><h3 id="file-name">Preparing transfer…</h3><p id="file-size">—</p></div><button id="download-btn" class="btn btn-primary" type="button">Download files</button><p id="expiry" class="inline-status"></p></div><div id="error-content" class="error-panel" hidden><strong>Transfer unavailable</strong><p id="error-message">This transfer could not be loaded.</p><a class="btn btn-secondary" href="/">Send your own files</a></div></section></main>
+<header class="site-header">
+  <a class="brand" href="/" aria-label="CloudDrop home"><span class="brand-mark">C</span><span>CloudDrop</span></a>
+  <button id="themeToggle" class="icon-btn" type="button" aria-label="Switch to light theme" aria-pressed="true">◐</button>
+</header>
+<main class="container page-shell">
+  <section class="hero">
+    <span class="eyebrow">SECURE TRANSFER</span>
+    <h1>Your files are<br><span>ready to go.</span></h1>
+    <p id="file-info">Checking the transfer…</p>
+  </section>
+  <section class="transfer-card" style="max-width:620px">
+    <div id="download-content" class="success-panel">
+      <div class="success-icon" aria-hidden="true">↓</div>
+      <div><span class="eyebrow success-eyebrow">DOWNLOAD</span><h3 id="file-name">Preparing transfer…</h3><p id="file-size">—</p></div>
+      <button id="download-btn" class="btn btn-primary" type="button">Download files</button>
+      <p id="expiry" class="inline-status"></p>
+    </div>
+    <div id="error-content" class="error-panel" hidden><strong>Transfer unavailable</strong><p id="error-message">This transfer could not be loaded.</p><a class="btn btn-secondary" href="/">Send your own files</a></div>
+  </section>
+</main>
 <footer class="site-footer"><span>CloudDrop</span><span>Private, direct, time-limited.</span></footer>
-<script src="/js/config.js"></script><script src="/js/theme.js"></script>
+<script src="/js/config.js"></script>
 <script>
-(()=>{ 'use strict'; const API=window.CLOUDDROP_CONFIG?.apiBase||''; const id=location.pathname.split('/').filter(Boolean).pop(); const $=x=>document.getElementById(x); async function load(){try{if(!API)throw new Error('Transfer service is not configured.');if(!id||!/^[0-9a-f-]{36}$/i.test(id))throw new Error('Transfer not found.');const r=await fetch(`${API}/transfer/${encodeURIComponent(id)}`);const b=await r.json().catch(()=>({}));if(!r.ok){const fallback=r.status===404?'Transfer not found.':r.status===410?'This transfer has expired.':r.status===409?'This transfer is not ready yet.':'Unable to load this transfer.';throw new Error(b?.error?.message||fallback);}const d=b.data||b;if(!d.downloadUrl)throw new Error('Download is currently unavailable.');$('file-info').textContent=`Ready to download ${d.fileCount||1} file${(d.fileCount||1)===1?'':'s'}`;$('file-name').textContent=d.fileName||'CloudDrop transfer';$('file-size').textContent=d.fileSize?`${(d.fileSize/1048576).toFixed(2)} MB`:'Size unavailable';$('expiry').textContent=d.expiresAt?`Expires ${new Date(d.expiresAt).toLocaleString()}`:'Secure, time-limited download';$('download-btn').onclick=()=>{location.href=d.downloadUrl};}catch(e){$('file-info').textContent='Transfer unavailable';$('error-message').textContent=e.message;$('download-content').hidden=true;$('error-content').hidden=false;console.error('transfer load failed',e.name);}} load();})();
+(()=>{
+  'use strict';
+  const root=document.documentElement;
+  const toggle=document.getElementById('themeToggle');
+  const saved=localStorage.getItem('clouddrop-theme');
+  function applyTheme(theme){
+    const next=theme==='light'?'light':'dark';
+    root.setAttribute('data-theme',next);
+    localStorage.setItem('clouddrop-theme',next);
+    if(toggle){
+      toggle.textContent=next==='dark'?'◐':'☀';
+      toggle.setAttribute('aria-label',next==='dark'?'Switch to light theme':'Switch to dark theme');
+      toggle.setAttribute('aria-pressed',String(next==='dark'));
+    }
+  }
+  applyTheme(saved==='light'?'light':'dark');
+  toggle?.addEventListener('click',()=>applyTheme(root.getAttribute('data-theme')==='dark'?'light':'dark'));
+
+  const API=window.CLOUDDROP_CONFIG?.apiBase||window.CloudDropConfig?.API_BASE||'';
+  const id=location.pathname.split('/').filter(Boolean).pop();
+  const $=x=>document.getElementById(x);
+  async function load(){
+    try{
+      if(!API)throw new Error('Transfer service is not configured.');
+      if(!id||!/^[0-9a-f-]{36}$/i.test(id))throw new Error('Transfer not found.');
+      const r=await fetch(`${API}/transfer/${encodeURIComponent(id)}`);
+      const b=await r.json().catch(()=>({}));
+      if(!r.ok){const fallback=r.status===404?'Transfer not found.':r.status===410?'This transfer has expired.':r.status===409?'This transfer is not ready yet.':'Unable to load this transfer.';throw new Error(b?.error?.message||fallback)}
+      const d=b.data||b;
+      if(!d.downloadUrl)throw new Error('Download is currently unavailable.');
+      $('file-info').textContent=`Ready to download ${d.fileCount||1} file${(d.fileCount||1)===1?'':'s'}`;
+      $('file-name').textContent=d.fileName||'CloudDrop transfer';
+      $('file-size').textContent=d.fileSize?`${(d.fileSize/1048576).toFixed(2)} MB`:'Size unavailable';
+      $('expiry').textContent=d.expiresAt?`Expires ${new Date(d.expiresAt).toLocaleString()}`:'Secure, time-limited download';
+      $('download-btn').onclick=()=>{location.href=d.downloadUrl};
+    }catch(e){
+      $('file-info').textContent='Transfer unavailable';
+      $('error-message').textContent=e.message;
+      $('download-content').hidden=true;
+      $('error-content').hidden=false;
+      console.error('transfer load failed',e.name);
+    }
+  }
+  load();
+})();
 </script>
 </body>
 </html>
