@@ -188,6 +188,15 @@
     }
   }
 
+  function loadUploadFix() {
+    if (document.querySelector('script[data-clouddrop-upload-fix]')) return;
+    const script = document.createElement('script');
+    script.src = '/js/upload-fix.js';
+    script.dataset.clouddropUploadFix = 'true';
+    script.async = false;
+    document.head.appendChild(script);
+  }
+
   function markActiveSection() {
     const links = [...document.querySelectorAll('.navlinks a[href^="#"]')];
     const targets = links.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
@@ -212,6 +221,7 @@
     removeDummyContactButton();
     removePlaceholderEmail();
     markActiveSection();
+    loadUploadFix();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once:true });
