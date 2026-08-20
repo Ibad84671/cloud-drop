@@ -17,8 +17,11 @@ window.CLOUDDROP_CONFIG = {
 
 // Keep UI/navigation enhancements separate from the transfer logic.
 (function () {
-  var script = document.createElement('script');
-  script.src = '/js/site-enhancements.js';
-  script.defer = true;
-  document.head.appendChild(script);
+  var scripts = ['/js/site-enhancements.js', '/js/content-consistency.js'];
+  scripts.forEach(function (src) {
+    var script = document.createElement('script');
+    script.src = src;
+    script.defer = true;
+    document.head.appendChild(script);
+  });
 })();
