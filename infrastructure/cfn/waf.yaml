@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudDrop regional AWS WAF for the API Gateway stage.
+
+Parameters:
+  ApiGatewayId:
+    Type: String
+    Description: API Gateway REST API ID protected by this WebACL.
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+Resources:
+  ApiWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub CloudDrop-Api-WAF-${Environment}
+      Description: Managed-rule protection for the CloudDrop API Gateway stage.
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub CloudDropApiWAF-${Environment}
+        SampledRequestsEnabled: true
+      Rules:
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 0
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: CloudDropCommonRuleSet
+            SampledRequestsEnabled: true
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 1
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: CloudDropKnownBadInputs
+            SampledRequestsEnabled: true
+        - Name: RateLimitByIp
+          Priority: 2
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: 1000
+              AggregateKeyType: IP
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: CloudDropRateLimit
+            SampledRequestsEnabled: true
+
+  ApiWebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    DependsOn: ApiWebACL
+    Properties:
+      WebACLArn: !GetAtt ApiWebACL.Arn
+      ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${ApiGatewayId}/stages/${Environment}
+
+Outputs:
+  WebACLArn:
+    Description: ARN of the CloudDrop API WebACL.
+    Value: !GetAtt ApiWebACL.Arn
