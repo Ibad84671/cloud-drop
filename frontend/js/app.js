@@ -5,7 +5,7 @@
   const API = String(cfg.API_BASE || '').replace(/\/$/, '');
   const MAX_FILES = 100;
   const MAX_TOTAL = 2147483648;
-  const state = { files: [], transferId: null, busy: false };
+  const state = { files: [], transferId: null, completionToken: null, busy: false };
   const $ = id => document.getElementById(id);
   const el = {
     fileInput: $('fileInput'),
@@ -162,8 +162,9 @@
 
       const data = created.data || created;
       state.transferId = data.transferId;
+      state.completionToken = data.completionToken;
       const uploads = data.uploads || [];
-      if (!state.transferId || uploads.length !== state.files.length) {
+      if (!state.transferId || !state.completionToken || uploads.length !== state.files.length) {
         throw new Error('Upload service returned an unexpected transfer payload.');
       }
 
@@ -183,6 +184,7 @@
       setProgress(100, 'Finalizing transfer…');
       await api(`/batch/${encodeURIComponent(state.transferId)}/complete`, {
         method: 'POST',
+        headers: { 'X-Completion-Token': state.completionToken },
         body: '{}'
       });
 
@@ -250,6 +252,7 @@
   function reset() {
     state.files = [];
     state.transferId = null;
+    state.completionToken = null;
     state.busy = false;
     el.fileInput.value = '';
     el.share.classList.remove('show');
