@@ -34,6 +34,20 @@ assert(index.includes("api('/batch'"), 'upload page must use the batch transfer 
 assert(index.includes('navigator.clipboard'), 'upload page must support link copying');
 assert(index.includes('sessionStorage'), 'upload page must not persist auth tokens in localStorage');
 
+const transferRuntime = read('frontend/js/transfer-runtime.js');
+assert(transferRuntime.includes('completionToken'), 'upload runtime must retain the completion token');
+assert(transferRuntime.includes("X-Completion-Token"), 'upload runtime must send the completion token header');
+
+const batchCreate = read('backend/functions/batch-create/index.js');
+assert(batchCreate.includes('const completionToken=crypto.randomUUID()'), 'batch-create must generate a completion token');
+assert(batchCreate.includes('completionToken,createdAt'), 'batch-create must persist the completion token');
+assert(batchCreate.includes('data:{transferId,completionToken'), 'batch-create must return the completion token to the creator');
+
+const batchComplete = read('backend/functions/batch-complete/index.js');
+assert(batchComplete.includes("header(e,'X-Completion-Token')"), 'batch-complete must read the completion token header');
+assert(batchComplete.includes("'INVALID_COMPLETION_TOKEN'"), 'batch-complete must reject invalid completion tokens');
+assert(batchComplete.includes('401'), 'batch-complete must return 401 for missing or invalid completion tokens');
+
 const transfer = read('frontend/t.html');
 assert(transfer.includes('/transfer/'), 'transfer page must resolve transfer metadata');
 assert(transfer.includes('^[0-9a-f-]{36}$'), 'transfer page must validate transfer IDs');
@@ -47,7 +61,13 @@ assert(template.includes('UsernameAttributes: [email]'), 'Cognito must use email
 assert(!template.includes('Required: true'), 'Cognito template must not declare required custom attributes');
 assert(template.includes('COGNITO_USER_POOLS'), 'protected API methods must use Cognito authorization');
 assert(template.includes('ThrottlingBurstLimit'), 'API Gateway stage should have abuse-resistant throttling');
+assert(template.includes('X-Completion-Token'), 'API Gateway CORS must allow the completion token header');
 assert(!template.includes('Action: "*"'), 'CloudFormation must not contain wildcard IAM actions');
+
+const waf = read('infrastructure/cfn/waf.yaml');
+assert(waf.includes('AWSManagedRulesCommonRuleSet'), 'API WAF must include AWS Common Rule Set');
+assert(waf.includes('AWSManagedRulesKnownBadInputsRuleSet'), 'API WAF must include Known Bad Inputs Rule Set');
+assert(waf.includes('AWS::WAFv2::WebACLAssociation'), 'API WAF must be associated with the API Gateway stage');
 
 const workflow = read('.github/workflows/deploy.yml');
 assert(workflow.includes('id-token: write'), 'deployment should use GitHub OIDC');
