@@ -37,11 +37,9 @@ for logical_id in "${!FUNCTION_DIRS[@]}"; do
   dir="backend/functions/${FUNCTION_DIRS[$logical_id]}"
   test -f "$dir/index.js"
   package_file=$(mktemp)
-  trap 'rm -f "$package_file"' RETURN
-  (cd "$dir" && zip -q -j "$OLDPWD/$package_file" index.js)
+  (cd "$dir" && zip -q -j "$package_file" index.js)
   aws lambda update-function-code --region "${REGION}" --function-name "$function_name" --zip-file "fileb://$package_file" >/dev/null
   rm -f "$package_file"
-  trap - RETURN
   echo "Published $logical_id from $dir"
 done
 
