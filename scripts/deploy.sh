@@ -2,6 +2,7 @@
 set -euo pipefail
 
 STACK_NAME="${STACK_NAME:-clouddrop-dev}"
+WAF_STACK_NAME="${WAF_STACK_NAME:-${STACK_NAME}-waf}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 REGION="${AWS_REGION:-us-east-1}"
 
@@ -16,8 +17,11 @@ if [[ -n "${SES_SOURCE_EMAIL:-}" ]]; then PARAMETERS+=("SesSourceEmail=${SES_SOU
 aws cloudformation deploy --region "${REGION}" --template-file infrastructure/cfn/main.yaml --stack-name "${STACK_NAME}" --parameter-overrides "${PARAMETERS[@]}" --capabilities CAPABILITY_IAM
 
 # Keep the deployed API contract aligned with the frontend limit.
-BATCH_CREATE_FUNCTION=$(aws cloudformation describe-stack-resource --region "${REGION}" --stack-name "${STACK_NAME}" --logical-resource-id BatchCreateFunction --query StackResourceDetail.PhysicalResourceId --output text)
+BATCH_CREATE_FUNCTION=$(aws cloudformation describe-stack-resource --region "${REGION}" --stack-name "${STACK_NAME}" --query StackResourceDetail.PhysicalResourceId --output text --logical-resource-id BatchCreateFunction)
 aws lambda update-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --environment "Variables={TABLE_NAME=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.TABLE_NAME' --output text),UPLOADS_BUCKET=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.UPLOADS_BUCKET' --output text),MAX_FILES=100,MAX_TOTAL_SIZE=2147483648,MAX_FILE_SIZE=2147483648,ALLOWED_ORIGIN=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.ALLOWED_ORIGIN' --output text)}" >/dev/null
+
+API_ID=$(aws cloudformation describe-stack-resources --region "${REGION}" --stack-name "${STACK_NAME}" --logical-resource-id ApiGateway --query 'StackResources[0].PhysicalResourceId' --output text)
+aws cloudformation deploy --region "${REGION}" --template-file infrastructure/cfn/waf.yaml --stack-name "${WAF_STACK_NAME}" --parameter-overrides "ApiGatewayId=${API_ID}" "Environment=${ENVIRONMENT}" --capabilities CAPABILITY_IAM
 
 API_URL=$(aws cloudformation describe-stacks --region "${REGION}" --stack-name "${STACK_NAME}" --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayURL`].OutputValue' --output text)
 CLIENT_ID=$(aws cloudformation describe-stacks --region "${REGION}" --stack-name "${STACK_NAME}" --query 'Stacks[0].Outputs[?OutputKey==`CognitoClientId`].OutputValue' --output text)
@@ -69,4 +73,5 @@ aws cloudfront create-invalidation --region "${REGION}" --distribution-id "${DIS
 echo "Deployment complete."
 echo "Frontend: ${CLOUDFRONT_URL}"
 echo "API: ${API_URL}"
+echo "API WAF stack: ${WAF_STACK_NAME}"
 echo "Email sharing: ${EMAIL_ENABLED}"
