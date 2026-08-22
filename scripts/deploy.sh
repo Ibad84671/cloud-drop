@@ -21,6 +21,30 @@ if [[ -n "${SES_SOURCE_EMAIL:-}" ]]; then PARAMETERS+=("SesSourceEmail=${SES_SOU
 
 aws cloudformation deploy --region "${REGION}" --template-file infrastructure/cfn/main.yaml --stack-name "${STACK_NAME}" --parameter-overrides "${PARAMETERS[@]}" --capabilities CAPABILITY_IAM
 
+# Publish the authoritative backend sources after CloudFormation creates/configures the Lambda resources.
+# CloudFormation keeps a bootstrap inline handler; these packages contain the maintained implementation
+# under backend/functions and ensure repository code is what actually runs in AWS.
+declare -A FUNCTION_DIRS=(
+  [BatchCreateFunction]=batch-create
+  [BatchCompleteFunction]=batch-complete
+  [GetTransferFunction]=get-transfer
+  [ListTransfersFunction]=list-transfers
+  [DeleteTransferFunction]=delete-transfer
+  [SendEmailFunction]=send-email
+)
+for logical_id in "${!FUNCTION_DIRS[@]}"; do
+  function_name=$(aws cloudformation describe-stack-resource --region "${REGION}" --stack-name "${STACK_NAME}" --logical-resource-id "$logical_id" --query StackResourceDetail.PhysicalResourceId --output text)
+  dir="backend/functions/${FUNCTION_DIRS[$logical_id]}"
+  test -f "$dir/index.js"
+  package_file=$(mktemp)
+  trap 'rm -f "$package_file"' RETURN
+  (cd "$dir" && zip -q -j "$OLDPWD/$package_file" index.js)
+  aws lambda update-function-code --region "${REGION}" --function-name "$function_name" --zip-file "fileb://$package_file" >/dev/null
+  rm -f "$package_file"
+  trap - RETURN
+  echo "Published $logical_id from $dir"
+done
+
 # Keep the deployed API contract aligned with the frontend limit.
 BATCH_CREATE_FUNCTION=$(aws cloudformation describe-stack-resource --region "${REGION}" --stack-name "${STACK_NAME}" --query StackResourceDetail.PhysicalResourceId --output text --logical-resource-id BatchCreateFunction)
 aws lambda update-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --environment "Variables={TABLE_NAME=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.TABLE_NAME' --output text),UPLOADS_BUCKET=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.UPLOADS_BUCKET' --output text),MAX_FILES=100,MAX_TOTAL_SIZE=2147483648,MAX_FILE_SIZE=2147483648,ALLOWED_ORIGIN=$(aws lambda get-function-configuration --region "${REGION}" --function-name "$BATCH_CREATE_FUNCTION" --query 'Environment.Variables.ALLOWED_ORIGIN' --output text)}" >/dev/null
