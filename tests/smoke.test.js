@@ -34,9 +34,13 @@ assert(index.includes("api('/batch'"), 'upload page must use the batch transfer 
 assert(index.includes('navigator.clipboard'), 'upload page must support link copying');
 assert(index.includes('sessionStorage'), 'upload page must not persist auth tokens in localStorage');
 
-const transferRuntime = read('frontend/js/transfer-runtime.js');
-assert(transferRuntime.includes('completionToken'), 'upload runtime must retain the completion token');
-assert(transferRuntime.includes("X-Completion-Token"), 'upload runtime must send the completion token header');
+const app = read('frontend/js/app.js');
+assert(app.includes('completionToken'), 'authoritative upload controller must retain the completion token');
+assert(app.includes("X-Completion-Token"), 'authoritative upload controller must send the completion token header');
+assert(app.includes('protectHomeNavigation'), 'authoritative upload controller must protect SPA state from logo navigation');
+assert(app.includes('restoreSession'), 'authoritative upload controller must restore the existing session');
+assert(app.includes("completionToken:state.completionToken"), 'email sharing must send the completion token in its request body');
+assert(!fs.existsSync(path.join(root, 'frontend/js/transfer-runtime.js')), 'obsolete duplicate transfer controller must not remain');
 
 const batchCreate = read('backend/functions/batch-create/index.js');
 assert(batchCreate.includes('const completionToken=crypto.randomUUID()'), 'batch-create must generate a completion token');
@@ -47,6 +51,15 @@ const batchComplete = read('backend/functions/batch-complete/index.js');
 assert(batchComplete.includes("header(e,'X-Completion-Token')"), 'batch-complete must read the completion token header');
 assert(batchComplete.includes("'INVALID_COMPLETION_TOKEN'"), 'batch-complete must reject invalid completion tokens');
 assert(batchComplete.includes('401'), 'batch-complete must return 401 for missing or invalid completion tokens');
+
+const sendEmail = read('backend/functions/send-email/index.js');
+assert(sendEmail.includes('completionToken'), 'email sharing must require a completion token');
+assert(sendEmail.includes('providedToken'), 'email sharing must compare the supplied completion token');
+assert(sendEmail.includes('EMAIL_SHARING_DISABLED'), 'email sharing must fail clearly when SES is not configured');
+assert(sendEmail.includes('Files shared with you via CloudDrop'), 'email subject must use the branded sharing message');
+assert(sendEmail.includes('Download files'), 'HTML email must provide a clear download CTA');
+assert(sendEmail.includes('Html:'), 'email must include an HTML body');
+assert(sendEmail.includes('Text:'), 'email must include a plain-text fallback');
 
 const listTransfers = read('backend/functions/list-transfers/index.js');
 assert(listTransfers.includes('const {completionToken,...safeItem}=item'), 'transfer listings must strip completion tokens');
@@ -66,6 +79,11 @@ assert(template.includes('COGNITO_USER_POOLS'), 'protected API methods must use 
 assert(template.includes('ThrottlingBurstLimit'), 'API Gateway stage should have abuse-resistant throttling');
 assert(template.includes('X-Completion-Token'), 'API Gateway CORS must allow the completion token header');
 assert(!template.includes('Action: "*"'), 'CloudFormation must not contain wildcard IAM actions');
+
+const deploy = read('scripts/deploy.sh');
+assert(deploy.includes('SES_SOURCE_EMAIL must be set for production deployments'), 'production deployments must fail without SES configuration');
+assert(deploy.includes('update-function-code'), 'deployment must publish maintained backend source code');
+assert(deploy.includes('backend/functions/${FUNCTION_DIRS[$logical_id]}'), 'deployment must map Lambda functions to backend source directories');
 
 const waf = read('infrastructure/cfn/waf.yaml');
 assert(waf.includes('AWSManagedRulesCommonRuleSet'), 'API WAF must include AWS Common Rule Set');
