@@ -11,6 +11,11 @@ if [[ -z "${ARCHIVER_LAYER_ARN:-}" ]]; then
   exit 1
 fi
 
+if [[ "$ENVIRONMENT" == "prod" && -z "${SES_SOURCE_EMAIL:-}" ]]; then
+  echo "ERROR: SES_SOURCE_EMAIL must be set for production deployments."
+  exit 1
+fi
+
 PARAMETERS=("Environment=${ENVIRONMENT}" "ArchiverLayerArn=${ARCHIVER_LAYER_ARN}")
 if [[ -n "${SES_SOURCE_EMAIL:-}" ]]; then PARAMETERS+=("SesSourceEmail=${SES_SOURCE_EMAIL}"); fi
 
