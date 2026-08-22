@@ -48,6 +48,9 @@ assert(batchComplete.includes("header(e,'X-Completion-Token')"), 'batch-complete
 assert(batchComplete.includes("'INVALID_COMPLETION_TOKEN'"), 'batch-complete must reject invalid completion tokens');
 assert(batchComplete.includes('401'), 'batch-complete must return 401 for missing or invalid completion tokens');
 
+const listTransfers = read('backend/functions/list-transfers/index.js');
+assert(listTransfers.includes('const {completionToken,...safeItem}=item'), 'transfer listings must strip completion tokens');
+
 const transfer = read('frontend/t.html');
 assert(transfer.includes('/transfer/'), 'transfer page must resolve transfer metadata');
 assert(transfer.includes('^[0-9a-f-]{36}$'), 'transfer page must validate transfer IDs');
